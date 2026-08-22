@@ -1,0 +1,2 @@
+# Optional only. Not installed or used for the recorded numerical analysis.
+google-genai>=1,<2
