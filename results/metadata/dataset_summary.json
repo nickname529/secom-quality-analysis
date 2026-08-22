@@ -1,0 +1,31 @@
+{
+  "rows": 1567,
+  "input_features_actual": 590,
+  "uci_metadata_feature_count": 591,
+  "metadata_count_discrepancy_note": "UCI metadata reports 591 features, while every official secom.data row contains 590 values. This project uses the raw file structure.",
+  "label_mapping": {
+    "-1": "PASS (0)",
+    "1": "FAIL (1)"
+  },
+  "pass_count": 1463,
+  "fail_count": 104,
+  "pass_pct": 0.9336311423101468,
+  "fail_pct": 0.06636885768985322,
+  "pass_to_fail_ratio": 14.067307692307692,
+  "total_feature_cells": 924530,
+  "missing_cells": 41951,
+  "missing_cell_pct": 0.04537548808583821,
+  "features_with_missing": 538,
+  "all_missing_features_full_data": 0,
+  "observed_constant_features_full_data": 116,
+  "infinite_values": 0,
+  "duplicate_feature_rows": 0,
+  "duplicate_feature_groups": 0,
+  "duplicate_groups_with_conflicting_labels": 0,
+  "duplicate_timestamps": 65,
+  "timestamp_min": "2008-07-19T11:55:00",
+  "timestamp_max": "2008-10-17T06:07:00",
+  "row_missing_count_median": 24.0,
+  "row_missing_count_p95": 48.0,
+  "row_missing_count_max": 152
+}
