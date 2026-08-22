@@ -1,6 +1,8 @@
-# 선택 사항: Gemma 4를 비판적 검토자로만 사용하기
+# Gemma 4 독립 리뷰 evidence와 선택적 재현 방법
 
-**확인 기준일: 2026-08-22.** 이번 프로젝트 환경의 수치 분석에는 Gemma를 설치하거나 실행하지 않았다. 사용자는 별도 외부 경로에서 Gemma 검토를 마쳤다고 밝히고 6개 지적 요약을 전달했지만 원문 파일은 제공되지 않았다. [`GEMMA_REVIEW_DECISIONS.md`](GEMMA_REVIEW_DECISIONS.md)는 그 사용자 요약에 대한 사람의 판정이며, 아래 스크립트가 생성한 원문이라고 주장하지 않는다.
+**확인 기준일: 2026-08-23.** 사용자는 별도 환경에서 실제 `gemma-4-26b-a4b-it` API 독립 리뷰를 수행했고, [`원본 출력`](../results/gemma_review.md)을 변경 없이 제공했다. [`GEMMA_REVIEW_DECISIONS.md`](GEMMA_REVIEW_DECISIONS.md)는 그 원본에 대한 사람의 판정이다. Gemma는 이 저장소의 수치 분석·모델 학습에 사용되지 않았다.
+
+공개 v1은 Freeze되었으므로 아래 경로는 **재현 참고용**이다. 추가 Gemma 실행이나 그에 따른 신규 모델링은 frozen v1에 반영하지 않으며, 필요하면 명시적으로 승인된 별도 버전에서만 다룬다.
 
 ## 가장 간단한 방법: Google AI Studio
 
@@ -11,17 +13,18 @@
 
 2026-08-22 기준 최신 core 계열은 Gemma 4이며, 공식 release 기록에는 2026-03-31 E2B/E4B/26B A4B/31B, 2026-06-03 12B Unified가 기재되어 있다.
 
-## 재현 가능한 API 방식
+## 원문과 같은 출력 형식을 만드는 API 방식
 
 Gemini API가 공식 지원하는 Gemma 4 model ID는 `gemma-4-26b-a4b-it`와 `gemma-4-31b-it`다. 이 프로젝트는 전자를 기본값으로 둔다.
 
 ```bash
 python -m pip install -r requirements-gemma.txt
 export GEMINI_API_KEY="AI_Studio에서_발급한_키"
-python scripts/gemma_review.py --include-code
+python scripts/gemma_review.py --include-code \
+  --output results/gemma_review_reproduction.md
 ```
 
-결과는 `results/gemma_review.md`에 저장된다. API key를 코드·README·notebook·Git에 넣지 않는다. [Google 공식 Gemma API 문서](https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api)는 `thinking_level="high"`와 `"minimal"`을 지원하며, 코드·방법론 검토에는 이 프로젝트가 `high`를 사용한다.
+재현 결과는 `results/gemma_review_reproduction.md`에 저장해 동결된 원본 `results/gemma_review.md`를 덮어쓰지 않는다. helper의 기본 출력도 재현 파일로 분리했다. API key를 코드·README·notebook·Git에 넣지 않는다. [Google 공식 Gemma API 문서](https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api)는 `thinking_level="high"`와 `"minimal"`을 지원하며, 코드·방법론 검토에는 이 프로젝트가 `high`를 사용한다.
 
 현재 [공식 가격표](https://ai.google.dev/gemini-api/docs/pricing)는 Gemma 4의 free tier 입출력을 무료, paid tier를 미제공으로 표시하고 free tier 입력이 제품 개선에 사용될 수 있다고 명시한다. 따라서 공개 SECOM 결과와 공개 가능한 코드만 전송하고 개인정보·지원서 원문·기업 비공개 데이터는 보내지 않는다. 제한과 가격은 바뀔 수 있으므로 실행 직전에 다시 확인한다.
 

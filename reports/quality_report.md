@@ -4,7 +4,7 @@
 
 **작성 기준일:** 2026-08-22
 
-**상태:** 분석 완료 / 생산 적용 근거 아님
+**상태:** 분석 `COMPLETE` / 공개 v1 결과 `FROZEN` (2026-08-23) / 생산 적용 근거 아님
 
 ## 1. 목적과 데이터 품질
 
@@ -51,8 +51,8 @@ RF @ 0.5는 Accuracy 93.31%였지만 FAIL 21건을 모두 놓쳤다. 후보 임�
 
 동일 timestamp 11개 그룹의 test 11행은 모두 PASS였다. 고정 모델·임계값에서 이를 제외해도 Recall 0.810과 FN 4건은 동일했고 Precision은 0.105에서 0.109로 소폭 높아졌다. 알려진 중복이 결과를 낙관적으로 부풀린 정황은 없지만 timestamp가 다른 동일 lot/batch 의존성은 식별자 부재로 통제할 수 없다.
 
-**결론:** 공개 익명 데이터에서 FAIL score의 일부 분리 가능성과 임계값 trade-off를 확인했지만, FP 145건·작은 FAIL 표본·시간 성능 저하·변수 시간 안정성 미확인·batch 정보 부재 때문에 운영 적용 근거는 부족하다. 비용자료가 없으므로 임의 비용으로 cost-optimal threshold를 계산하지 않았다. 다음 단계는 실제 비용 기준을 먼저 정하고 lot/batch 그룹 분할, 외부 기간 검증, 확률 calibration, 변수 정의 확인을 수행하는 것이다. 현재 결과로 SK하이닉스 공정 원인 규명, 수율 개선, 현장 적용을 주장하지 않는다.
+**결론:** 공개 익명 데이터에서 FAIL score의 일부 분리 가능성과 임계값 trade-off를 확인했지만, FP 145건·작은 FAIL 표본·시간 성능 저하·변수 시간 안정성 미확인·batch 정보 부재 때문에 운영 적용 근거는 부족하다. 비용자료가 없으므로 임의 비용으로 cost-optimal threshold를 계산하지 않았다. 실제 비용 기준, lot/batch 그룹 분할, 외부 기간 검증, 확률 calibration, 변수 정의 확인은 동결된 v1에서 수행하지 않은 후속 연구 제안이다. 현재 결과로 SK하이닉스 공정 원인 규명, 수율 개선, 현장 적용을 주장하지 않는다.
 
 ## 6. AI 반론과 사람의 판정
 
-사용자는 외부 Gemma 검토의 6개 지적 요약을 전달했다. 요청에 언급된 원문 파일은 저장소에 없어 인용·복원하지 않았고, 각 지적을 Python으로 검증한 뒤 사람이 `ACCEPT / REJECT / PARTIAL ACCEPT / MAINTAIN`으로 판정했다. 상세 근거와 조치는 [`GEMMA_REVIEW_DECISIONS.md`](../docs/GEMMA_REVIEW_DECISIONS.md)에 있다. Gemma가 수치를 계산하거나 최종 결론을 결정하지 않았다.
+사용자는 별도 환경에서 실제 Gemma 4 26B A4B API 독립 리뷰를 수행했다. [`원본 출력`](../results/gemma_review.md)은 내용 변경 없이 evidence로 보존했고, 사람은 각 지적을 `ACCEPT / REJECT / PARTIAL ACCEPT / MAINTAIN`으로 판정했다. spurious correlation·모든 지표 무효·현장 도입 불가능 단정은 기각하거나 완화했으며, 수용한 검증 의제 중 지정된 세 항목만 Python으로 확인했다. 상세 원문 매핑과 조치는 [`GEMMA_REVIEW_DECISIONS.md`](../docs/GEMMA_REVIEW_DECISIONS.md)에 있다. Gemma가 수치를 계산하거나 최종 결론을 결정하지 않았다.

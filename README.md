@@ -2,9 +2,11 @@
 
 공개·익명화된 SECOM 데이터로 **FAIL을 얼마나 놓치지 않고 선별할 수 있는지**를 검토한 재현 가능한 baseline 프로젝트다. 목적은 생산 적용 성능을 주장하는 것이 아니라, 데이터 품질 점검 → 누수 방지 → 불균형 평가 → False Negative 분석 → 한계 공개까지의 판단 과정을 증명하는 것이다.
 
+> **상태:** 분석 `COMPLETE` / 공개 v1 결과 `FROZEN` (2026-08-23). 데이터·분할·전처리·모델 family·주 임계값·잠금 test·민감도 수치·그림·결론을 동결했으며 추가 모델링·튜닝을 중단했다. 재실행은 재현 확인일 뿐 결과 재선택이 아니다.
+
 > 핵심 결론: 품질 우선 후보 임계값에서 테스트 FAIL 21건 중 17건을 찾았지만 PASS 145건을 오탐했다. 작은 FAIL 표본의 불확실성이 크고 시간순 holdout 성능과 변수 안정성도 약했다. 따라서 현재 결과만으로 현장 적용이나 원인 규명을 주장할 수 없다.
 
-**바로 보기:** [실행 완료 Jupyter Notebook](notebooks/secom_quality_analysis.ipynb) · [Quality Report](reports/quality_report.md) · [Human Decision Log](docs/GEMMA_REVIEW_DECISIONS.md) · [AI 사용 기록](docs/AI_USAGE.md) · [검증 로그](docs/VALIDATION_LOG.md)
+**바로 보기:** [실행 완료 Jupyter Notebook](notebooks/secom_quality_analysis.ipynb) · [Quality Report](reports/quality_report.md) · [Gemma 원본 리뷰](results/gemma_review.md) · [Human Decision Log](docs/GEMMA_REVIEW_DECISIONS.md) · [AI 사용 기록](docs/AI_USAGE.md) · [검증 로그](docs/VALIDATION_LOG.md)
 
 ## 핵심 결과
 
@@ -123,6 +125,7 @@ scripts/                  데이터 다운로드, Notebook 생성, 선택적 Gem
 tests/                    원본·분할·지표·임계값·후보 규칙 검증
 results/tables/           CV, test, bootstrap CI, FN, 변수 후보 CSV
 results/metadata/         데이터·분할·threshold·시간순·민감도·버전 JSON
+results/gemma_review.md   변경하지 않은 Gemma API 독립 리뷰 원본
 figures/                  10개 결과 그래프
 models/                   train split으로 fit한 선택 모델과 metadata
 reports/                  1~2페이지 품질 보고서와 지원서 문장
@@ -147,10 +150,11 @@ docs/                     AI 사용·검증 기록, Human Decision Log
 - [`secom_quality_analysis.ipynb`](notebooks/secom_quality_analysis.ipynb): 실제 출력과 assertion을 포함한 실행 Notebook
 - [`application_sentences.md`](reports/application_sentences.md): 사실 기반 지원서 문장 초안
 - [`AI_USAGE.md`](docs/AI_USAGE.md): 실제 AI 사용 범위와 미실행 항목
-- [`GEMMA_REVIEW_DECISIONS.md`](docs/GEMMA_REVIEW_DECISIONS.md): 사용자 제공 Gemma 지적 요약에 대한 사람의 판정과 Python 조치
-- [`GEMMA_OPTIONAL.md`](docs/GEMMA_OPTIONAL.md): 분석 완료 후 선택적으로 Gemma 4를 반론 검토자에만 쓰는 방법
+- [`gemma_review.md`](results/gemma_review.md): 실제 Gemma 4 26B A4B API 독립 리뷰의 변경 없는 원본 evidence
+- [`GEMMA_REVIEW_DECISIONS.md`](docs/GEMMA_REVIEW_DECISIONS.md): 원본 G-01~G-06에 대한 사람의 판정과 Python 조치
+- [`GEMMA_OPTIONAL.md`](docs/GEMMA_OPTIONAL.md): 보존된 원본과 별개인 Gemma 4 API 재현 참고 경로
 - [`VALIDATION_LOG.md`](docs/VALIDATION_LOG.md): 실행 명령·실패·검증·정확한 파일 목록
 
-프로젝트 환경에서는 Gemma를 설치하거나 호출하지 않았다. 사용자는 외부에서 Gemma 4 26B A4B 검토를 완료했다고 밝히고 6개 지적 요약을 전달했지만, 요청에 언급된 `results/gemma_review.md` 원문은 로컬과 GitHub에 없었다. 따라서 원문을 복원하지 않고 사용자 요약만 Python 결과와 대조해 사람이 판정했다. 모든 숫자의 근거는 Python 산출물이다.
+사용자는 별도 환경에서 실제 `gemma-4-26b-a4b-it` API 독립 리뷰를 수행했고, 원본 출력은 [`results/gemma_review.md`](results/gemma_review.md)에 내용 변경 없이 보존했다. Gemma의 spurious correlation·모든 지표 무효·현장 도입 불가능 단정은 사람이 기각하거나 완화했고, 수용한 세 검증 의제만 Python으로 확인했다. 원문은 AI 비평 evidence이며 모든 숫자의 source of truth는 Python 산출물이다.
 
 Codex는 분석 구조, 코드 검토, 문서 초안, 반론 생성에 사용했다. AI에는 데이터 개수·평가지표 계산, 임의의 결과 생성, 익명 변수의 공정 의미 추정, test 결과를 본 뒤의 모델·임계값 재선택을 맡기지 않았다. 수치는 Python 실행과 자동 테스트, 예측 CSV 독립 재계산으로 검증했다.
