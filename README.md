@@ -2,9 +2,9 @@
 
 공개·익명화된 SECOM 데이터로 **FAIL을 얼마나 놓치지 않고 선별할 수 있는지**를 검토한 재현 가능한 baseline 프로젝트다. 목적은 생산 적용 성능을 주장하는 것이 아니라, 데이터 품질 점검 → 누수 방지 → 불균형 평가 → False Negative 분석 → 한계 공개까지의 판단 과정을 증명하는 것이다.
 
-> 핵심 결론: 품질 우선 후보 임계값에서 테스트 FAIL 21건 중 17건을 찾았지만 PASS 145건을 오탐했다. 시간순 holdout에서는 성능이 더 낮아졌다. 따라서 탐지 가능성은 보였으나 현재 결과만으로 현장 적용이나 원인 규명을 주장할 수 없다.
+> 핵심 결론: 품질 우선 후보 임계값에서 테스트 FAIL 21건 중 17건을 찾았지만 PASS 145건을 오탐했다. 작은 FAIL 표본의 불확실성이 크고 시간순 holdout 성능과 변수 안정성도 약했다. 따라서 현재 결과만으로 현장 적용이나 원인 규명을 주장할 수 없다.
 
-**바로 보기:** [실행 완료 Jupyter Notebook](notebooks/secom_quality_analysis.ipynb) · [Quality Report](reports/quality_report.md) · [AI 사용 기록](docs/AI_USAGE.md) · [검증 로그](docs/VALIDATION_LOG.md)
+**바로 보기:** [실행 완료 Jupyter Notebook](notebooks/secom_quality_analysis.ipynb) · [Quality Report](reports/quality_report.md) · [Human Decision Log](docs/GEMMA_REVIEW_DECISIONS.md) · [AI 사용 기록](docs/AI_USAGE.md) · [검증 로그](docs/VALIDATION_LOG.md)
 
 ## 핵심 결과
 
@@ -26,7 +26,9 @@
 
 ¹ `PR-AUC`는 precision–recall 곡선의 사다리꼴 적분, `AP`는 Average Precision이다. 둘은 보간 정의가 다르다. 특히 모든 점수가 같은 Dummy의 사다리꼴 PR-AUC 0.533은 끝점 선형 보간 때문에 과도하게 커지므로 이 프로젝트는 **AP를 주 비교지표**로 사용한다. 모든 정확한 수치는 [`test_metrics.csv`](results/tables/test_metrics.csv)에 있다.
 
-Random Forest @ 0.5의 Accuracy는 93.31%지만 FAIL을 한 건도 찾지 못했다. 반대로 후보 임계값은 Recall을 80.95%(17/21)로 높였으나 314건 중 162건을 FAIL 후보로 분류했고, 그중 실제 FAIL은 17건뿐이다. 이는 성과 수치가 아니라 **누락과 추가검사 부담의 trade-off**다.
+Random Forest @ 0.5의 Accuracy는 93.31%지만 FAIL을 한 건도 찾지 못했다. 반대로 후보 임계값은 Recall을 80.95%(17/21)로 높였으나 314건 중 162건을 FAIL 후보로 분류했고, 그중 실제 FAIL은 17건뿐이다. 이는 성과 수치가 아니라 **누락 감소와 추가확인 후보 증가의 trade-off**다.
+
+고정 모델·고정 임계값의 test 예측을 true-label-stratified 방식으로 10,000회 bootstrap한 95% 구간은 Recall `0.6190–0.9524`, Precision `0.0818–0.1268`, Balanced Accuracy `0.5621–0.7390`, ROC-AUC `0.6439–0.8632`, AP `0.1402–0.4267`이었다. FAIL 21개로 불확실성이 크다는 뜻이지만 점추정 전체가 무효라는 뜻은 아니다. 이 조건부 구간은 학습·모델선택·임계값선택 불확실성과 외부 기간 변동을 포함하지 않는다. 정확한 값은 [`test_metric_bootstrap_ci.csv`](results/tables/test_metric_bootstrap_ci.csv)에 있다.
 
 ![테스트 모델 지표](figures/04_test_model_comparison.png)
 
@@ -53,7 +55,7 @@ Random Forest @ 0.5의 Accuracy는 93.31%지만 FAIL을 한 건도 찾지 못했
 6. 모델 family는 CV AP로, 후보 임계값은 선택 모델의 train-only OOF 예측으로 정한다.
 7. 잠금 test는 최종 성능 확인에만 쓰며, test FN을 보고 재학습하거나 임계값을 바꾸지 않는다.
 
-원본의 exact duplicate feature row는 0건이다. 다만 같은 timestamp가 train/test 양쪽에 걸친 그룹이 11개(22행) 있다. timestamp가 batch를 뜻한다는 근거는 없지만 미지의 제조 군집 proxy일 수 있으며, lot/batch ID가 없어 이 의존성은 통제하지 못했다.
+원본의 exact duplicate feature row는 0건이다. 다만 같은 timestamp가 train/test 양쪽에 걸친 그룹이 11개(22행) 있다. timestamp가 batch를 뜻한다는 근거는 없지만 미지의 제조 군집 proxy일 수 있다. 고정 모델·임계값에서 shared timestamp의 test 11행을 제외해도 Recall 0.810과 FN 4건은 같았고, Precision은 0.105에서 0.109로 소폭 높아졌다. 따라서 알려진 exact timestamp 중복이 1차 성능을 부풀린 정황은 없지만, lot/batch ID가 없어 다른 군집 의존성은 통제하지 못했다. 상세 값은 [`shared_timestamp_sensitivity.json`](results/metadata/shared_timestamp_sensitivity.json)에 있다.
 
 ## False Negative
 
@@ -78,19 +80,23 @@ Logistic 표준화 계수의 train-only 15개 반복 fold top-20 빈도와 Rando
 - Logistic 평균 표준화 계수: +1.309, fold 부호 일치율 100%
 - RF 평균 AP 감소: 0.0102, fold 간 표준편차 0.0138
 
-이는 **예측 연관성의 후속 점검 후보**다. 익명화 때문에 센서명·단위·온도·압력·식각 등의 공정 의미나 원인으로 해석할 수 없다. 상관된 변수가 중요도를 나눠 갖거나 대체할 수도 있다.
+이는 **random-train CV에서 확인된 예측 연관성의 후속 점검 후보**다. 익명화 때문에 센서명·단위·온도·압력·식각 등의 공정 의미나 원인으로 해석할 수 없다. 상관된 변수가 중요도를 나눠 갖거나 대체할 수도 있다.
 
 ![변수 후보 반복 빈도](figures/08_feature_candidate_stability.png)
 
+추가 시간 안정성 검사는 primary test와 미래 holdout의 합집합 557행을 보호하고, 보호 집합과 timestamp가 같은 7행도 제외한 strict development pool 1,003행(FAIL 67)만 사용했다. 세 expanding-time fold에서 Logistic 계수 top-20과 RF의 양수 permutation AP 감소 top-20을 비교한 결과, 두 방법 모두 2/3회 이상 반복된 변수는 0개였다. `feature_059`도 각각 1/3회였다. 따라서 기존 연관성 후보를 소급 무효화하지는 않지만 **시간 안정성은 확인되지 않았다**. Validation FAIL이 15·9·9개뿐이고 expanding train도 중첩되므로 탐색적 consistency screen으로만 해석한다.
+
+![시간순 변수 안정성](figures/10_temporal_feature_stability.png)
+
 ## 시간순 민감도
 
-2008-07-19~2008-10-02를 학습(1,253건, FAIL 87), 이후 2008-10-17까지를 holdout(314건, FAIL 17)으로 둔 탐색적 검사를 추가했다. 시간순 학습 데이터의 OOF에서만 새 후보 임계값 `0.064911`을 정했지만 미래 holdout에서는 다음과 같았다.
+`timestamp → sample_id` 순서를 고정해 2008-07-19~2008-10-02를 학습(1,253건, FAIL 87), 이후 2008-10-17까지를 holdout(314건, FAIL 17)으로 둔 탐색적 검사를 추가했다. 시간순 학습 데이터의 OOF에서만 새 후보 임계값 `0.068235`를 정했지만 미래 holdout에서는 다음과 같았다.
 
-- TN 131 / FP 166 / FN 9 / TP 8
-- FAIL Recall 0.471, Precision 0.046, F1 0.084, Balanced Accuracy 0.456
-- ROC-AUC 0.514, AP 0.092, PR-AUC 0.077
+- TN 171 / FP 126 / FN 10 / TP 7
+- FAIL Recall 0.412, Precision 0.053, F1 0.093, Balanced Accuracy 0.494
+- ROC-AUC 0.540, AP 0.079, PR-AUC 0.068
 
-즉, 무작위 holdout 결과보다 크게 약해졌다. 단, 모델 family 자체는 전체 기간을 섞은 1차 무작위 분석에서 선택됐기 때문에 이 검사는 완전 독립적인 prospective 평가가 아니라 **시간 일반화 위험을 드러내는 민감도 검사**다.
+즉, 무작위 holdout 결과보다 크게 약해졌다. 이는 **distribution shift 또는 temporal instability 가능성**을 보여주지만 spurious correlation이 원인이라고 단정하지 않는다. 모델 family 자체도 전체 기간을 섞은 1차 무작위 분석에서 선택됐기 때문에 이 검사는 완전 독립적인 prospective 평가가 아니라 시간 일반화 위험을 드러내는 민감도 검사다.
 
 ## 재현 방법
 
@@ -115,12 +121,12 @@ src/secom_analysis.py     전체 재현 분석 파이프라인
 notebooks/                모든 코드 셀이 실행된 증거 Notebook
 scripts/                  데이터 다운로드, Notebook 생성, 선택적 Gemma 검토
 tests/                    원본·분할·지표·임계값·후보 규칙 검증
-results/tables/           CV, test, FN, 변수 후보 CSV
-results/metadata/         데이터·분할·threshold·시간순·버전 JSON
-figures/                  9개 결과 그래프
+results/tables/           CV, test, bootstrap CI, FN, 변수 후보 CSV
+results/metadata/         데이터·분할·threshold·시간순·민감도·버전 JSON
+figures/                  10개 결과 그래프
 models/                   train split으로 fit한 선택 모델과 metadata
 reports/                  1~2페이지 품질 보고서와 지원서 문장
-docs/                     AI 사용 기록과 선택적 Gemma 안내
+docs/                     AI 사용·검증 기록, Human Decision Log
 ```
 
 `models/selected_model.joblib`은 재현 증거용이다. Python pickle 계열 파일은 임의 코드를 실행할 수 있으므로 출처가 다른 모델 파일은 로드하지 말고, 이 저장소에서도 가능하면 분석 스크립트로 다시 생성한다.
@@ -128,12 +134,12 @@ docs/                     AI 사용 기록과 선택적 Gemma 안내
 ## 해석 한계
 
 - 공개된 2008년 익명 데이터이며 현재 SK하이닉스 라인 데이터가 아니다.
-- 테스트 FAIL은 21건뿐이라 소수점 차이를 모델 우위로 일반화할 수 없다.
+- 테스트 FAIL은 21건뿐이며 Recall bootstrap 95% CI도 0.619~0.952로 넓다. 지표는 조건부 추정치이지 외부 성능 보장이 아니다.
 - CV AP 규칙상 RF가 선택됐지만 paired 15 fold 중 RF가 LR보다 높았던 것은 8개뿐이다. 압도적 우위가 아니다.
 - 임계값 0.060939는 보정된 불량확률 6.1%가 아니며, 운영 비용 기준이 없는 분석 가정이다.
 - lot, batch, 장비, recipe, 실제 공정 변수명과 단위가 없다.
-- `feature_059`는 원인이 아니라 조사 후보이며 수율 개선 효과를 입증하지 않았다.
-- 외부 기간·현장 데이터, 그룹 분할, 비용행렬, 확률 calibration을 추가 검증해야 한다.
+- `feature_059`는 원인이 아니라 random-CV 조사 후보이며 development-only 시간 안정성은 확인되지 않았다.
+- 외부 기간·현장 데이터, 실제 lot/batch 그룹 분할, 비용행렬, 확률 calibration을 추가 검증해야 한다. 비용자료가 없으므로 cost-optimal threshold는 계산하지 않았다.
 
 ## 보고서와 AI 검토
 
@@ -141,9 +147,10 @@ docs/                     AI 사용 기록과 선택적 Gemma 안내
 - [`secom_quality_analysis.ipynb`](notebooks/secom_quality_analysis.ipynb): 실제 출력과 assertion을 포함한 실행 Notebook
 - [`application_sentences.md`](reports/application_sentences.md): 사실 기반 지원서 문장 초안
 - [`AI_USAGE.md`](docs/AI_USAGE.md): 실제 AI 사용 범위와 미실행 항목
+- [`GEMMA_REVIEW_DECISIONS.md`](docs/GEMMA_REVIEW_DECISIONS.md): 사용자 제공 Gemma 지적 요약에 대한 사람의 판정과 Python 조치
 - [`GEMMA_OPTIONAL.md`](docs/GEMMA_OPTIONAL.md): 분석 완료 후 선택적으로 Gemma 4를 반론 검토자에만 쓰는 방법
 - [`VALIDATION_LOG.md`](docs/VALIDATION_LOG.md): 실행 명령·실패·검증·정확한 파일 목록
 
-Gemma는 이번 수치 산출에 설치하거나 실행하지 않았다. 모든 숫자의 근거는 Python 결과이며, Gemma를 사용하더라도 가설·코드 리뷰·반론 생성만 맡긴다.
+프로젝트 환경에서는 Gemma를 설치하거나 호출하지 않았다. 사용자는 외부에서 Gemma 4 26B A4B 검토를 완료했다고 밝히고 6개 지적 요약을 전달했지만, 요청에 언급된 `results/gemma_review.md` 원문은 로컬과 GitHub에 없었다. 따라서 원문을 복원하지 않고 사용자 요약만 Python 결과와 대조해 사람이 판정했다. 모든 숫자의 근거는 Python 산출물이다.
 
 Codex는 분석 구조, 코드 검토, 문서 초안, 반론 생성에 사용했다. AI에는 데이터 개수·평가지표 계산, 임의의 결과 생성, 익명 변수의 공정 의미 추정, test 결과를 본 뒤의 모델·임계값 재선택을 맡기지 않았다. 수치는 Python 실행과 자동 테스트, 예측 CSV 독립 재계산으로 검증했다.

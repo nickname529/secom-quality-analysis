@@ -1,0 +1,15 @@
+{
+  "purpose": "Uncertainty sensitivity for the locked test metrics.",
+  "method": "True-label-stratified paired nonparametric percentile bootstrap of fixed test rows; PASS and FAIL counts are preserved in each replicate.",
+  "seed": 20260822,
+  "requested_replicates": 10000,
+  "valid_replicates": 10000,
+  "skipped_single_class_replicates": 0,
+  "confidence_level": 0.95,
+  "test_rows": 314,
+  "test_fail_count": 21,
+  "model_refit_in_bootstrap": false,
+  "threshold_reselected_in_bootstrap": false,
+  "class_prevalence_conditioned_on_observed_test": true,
+  "caution": "Intervals condition on this fixed model, threshold, test sampling frame, and observed 21/314 FAIL prevalence. They exclude training, model-selection, and threshold-selection uncertainty; they do not make all metrics invalid and are not an external performance guarantee."
+}
