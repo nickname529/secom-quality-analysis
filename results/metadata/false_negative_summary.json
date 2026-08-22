@@ -1,0 +1,11 @@
+{
+  "selected_model": "random_forest_balanced",
+  "selected_threshold": 0.060938733541279586,
+  "test_fail_cases": 21,
+  "true_positives": 17,
+  "false_negatives": 4,
+  "one_fail_case_recall_step_percentage_points": 4.761904761904762,
+  "false_negative_missing_count_median": 26.0,
+  "true_positive_missing_count_median": 24.0,
+  "interpretation": "Exploratory error analysis only. Test-set errors were not used to refit the model or change the threshold."
+}
