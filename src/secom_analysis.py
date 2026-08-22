@@ -61,6 +61,9 @@ CV_SPLITS = 5
 CV_REPEATS = 3
 QUALITY_RECALL_TARGET = 0.80
 TOP_K = 20
+BOOTSTRAP_REPLICATES = 10_000
+BOOTSTRAP_SEED = 20_260_822
+TEMPORAL_FEATURE_WINDOWS = 4
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATA_DIR = PROJECT_ROOT / "data" / "raw"
@@ -823,6 +826,617 @@ def make_false_negative_outputs(
     return false_negatives, fail_cases, summary
 
 
+def temporal_feature_stability(
+    logistic_model: Pipeline,
+    forest_model: Pipeline,
+    features: pd.DataFrame,
+    target: pd.Series,
+    metadata: pd.DataFrame,
+    primary_train_indices: Iterable[int],
+    n_blocks: int = TEMPORAL_FEATURE_WINDOWS,
+    top_k: int = TOP_K,
+    seed: int = SEED,
+) -> tuple[
+    pd.DataFrame,
+    pd.DataFrame,
+    pd.DataFrame,
+    pd.DataFrame,
+    pd.DataFrame,
+    dict[str, Any],
+]:
+    """Development-only expanding-time stability screen for anonymous features."""
+
+    if n_blocks != 4:
+        raise ValueError("This documented 2-of-3 screen requires exactly 4 blocks")
+    if top_k != 20:
+        raise ValueError("This documented temporal screen requires top_k=20")
+
+    ordered_full_indices = metadata.sort_values(
+        ["timestamp", "sample_id"], kind="stable"
+    ).index.to_numpy()
+    chronological_split = int(len(ordered_full_indices) * (1 - TEST_SIZE))
+    chronological_train = set(ordered_full_indices[:chronological_split])
+    chronological_holdout = set(ordered_full_indices[chronological_split:])
+    primary_train = set(primary_train_indices)
+    primary_test = set(features.index) - primary_train
+    protected_indices = primary_test | chronological_holdout
+    protected_timestamps = set(metadata.loc[list(protected_indices), "timestamp"])
+
+    row_level_pool = primary_train & chronological_train
+    development_pool = {
+        index
+        for index in row_level_pool
+        if metadata.loc[index, "timestamp"] not in protected_timestamps
+    }
+    excluded_timestamp_overlap = row_level_pool - development_pool
+    development_metadata = metadata.loc[list(development_pool)].sort_values(
+        ["timestamp", "sample_id"], kind="stable"
+    )
+    unique_timestamps = development_metadata["timestamp"].drop_duplicates().to_numpy()
+    timestamp_blocks = np.array_split(unique_timestamps, n_blocks)
+
+    all_features = list(features.columns)
+    logistic_rows: list[dict[str, Any]] = []
+    forest_rows: list[dict[str, Any]] = []
+    fold_records: list[dict[str, Any]] = []
+
+    for fold_number in range(1, n_blocks):
+        train_timestamps = np.concatenate(timestamp_blocks[:fold_number])
+        valid_timestamps = timestamp_blocks[fold_number]
+        train_indices = development_metadata.index[
+            development_metadata["timestamp"].isin(train_timestamps)
+        ]
+        valid_indices = development_metadata.index[
+            development_metadata["timestamp"].isin(valid_timestamps)
+        ]
+        if target.loc[train_indices].nunique() != 2:
+            raise ValueError(f"Temporal fold {fold_number} train lacks both labels")
+        if target.loc[valid_indices].nunique() != 2:
+            raise ValueError(f"Temporal fold {fold_number} validation lacks both labels")
+
+        fitted_logistic = clone(logistic_model).fit(
+            features.loc[train_indices], target.loc[train_indices]
+        )
+        retained = retained_feature_names(fitted_logistic, all_features)
+        coefficients = fitted_logistic.named_steps["classifier"].coef_[0]
+        coefficient_map = dict(zip(retained, coefficients, strict=True))
+        ranked_logistic = retained[np.argsort(np.abs(coefficients))[::-1]]
+        logistic_rank = {
+            feature: rank
+            for rank, feature in enumerate(ranked_logistic.tolist(), start=1)
+        }
+        logistic_top = set(ranked_logistic[:top_k].tolist())
+
+        fitted_forest = clone(forest_model).fit(
+            features.loc[train_indices], target.loc[train_indices]
+        )
+        importance = permutation_importance(
+            fitted_forest,
+            features.loc[valid_indices],
+            target.loc[valid_indices],
+            scoring="average_precision",
+            n_repeats=3,
+            random_state=seed + fold_number,
+            n_jobs=1,
+        )
+        positive_order = np.argsort(importance.importances_mean)[::-1]
+        positive_order = [
+            index
+            for index in positive_order
+            if importance.importances_mean[index] > 0
+        ]
+        forest_top_indices = set(positive_order[:top_k])
+        forest_rank = {
+            all_features[index]: rank
+            for rank, index in enumerate(positive_order, start=1)
+        }
+
+        fold_records.append(
+            {
+                "fold": fold_number,
+                "train_rows": int(len(train_indices)),
+                "train_fail_count": int(target.loc[train_indices].sum()),
+                "valid_rows": int(len(valid_indices)),
+                "valid_fail_count": int(target.loc[valid_indices].sum()),
+                "train_time_min": metadata.loc[train_indices, "timestamp"].min(),
+                "train_time_max": metadata.loc[train_indices, "timestamp"].max(),
+                "valid_time_min": metadata.loc[valid_indices, "timestamp"].min(),
+                "valid_time_max": metadata.loc[valid_indices, "timestamp"].max(),
+                "strict_time_order": bool(
+                    metadata.loc[train_indices, "timestamp"].max()
+                    < metadata.loc[valid_indices, "timestamp"].min()
+                ),
+                "shared_timestamp_count": int(
+                    len(
+                        set(metadata.loc[train_indices, "timestamp"])
+                        & set(metadata.loc[valid_indices, "timestamp"])
+                    )
+                ),
+            }
+        )
+
+        for feature in all_features:
+            coefficient = coefficient_map.get(feature, float("nan"))
+            logistic_rows.append(
+                {
+                    "fold": fold_number,
+                    "feature": feature,
+                    "retained": feature in coefficient_map,
+                    "standardized_coefficient": coefficient,
+                    "absolute_coefficient": abs(coefficient),
+                    "absolute_rank": logistic_rank.get(feature, float("nan")),
+                    "in_top_k": feature in logistic_top,
+                }
+            )
+
+        for index, feature in enumerate(all_features):
+            forest_rows.append(
+                {
+                    "fold": fold_number,
+                    "feature": feature,
+                    "ap_permutation_importance_mean": float(
+                        importance.importances_mean[index]
+                    ),
+                    "ap_permutation_importance_std": float(
+                        importance.importances_std[index]
+                    ),
+                    "positive_importance_rank": forest_rank.get(
+                        feature, float("nan")
+                    ),
+                    "in_positive_top_k": index in forest_top_indices,
+                }
+            )
+
+    logistic_details = pd.DataFrame(logistic_rows)
+    forest_details = pd.DataFrame(forest_rows)
+    fold_count = n_blocks - 1
+
+    def sign_consistency(series: pd.Series) -> float:
+        observed = series.dropna()
+        observed = observed[observed != 0]
+        if observed.empty:
+            return float("nan")
+        positive_fraction = float((observed > 0).mean())
+        return max(positive_fraction, 1 - positive_fraction)
+
+    logistic_summary = (
+        logistic_details.groupby("feature", as_index=False)
+        .agg(
+            folds_retained=("retained", "sum"),
+            top_k_count=("in_top_k", "sum"),
+            mean_standardized_coefficient=("standardized_coefficient", "mean"),
+            mean_absolute_coefficient=("absolute_coefficient", "mean"),
+            coefficient_std_across_folds=("standardized_coefficient", "std"),
+            median_absolute_rank=("absolute_rank", "median"),
+            sign_consistency=("standardized_coefficient", sign_consistency),
+        )
+        .assign(
+            retained_frequency=lambda frame: frame["folds_retained"] / fold_count,
+            top_k_frequency=lambda frame: frame["top_k_count"] / fold_count,
+        )
+        .sort_values(
+            ["top_k_count", "mean_absolute_coefficient"],
+            ascending=[False, False],
+        )
+    )
+    forest_summary = (
+        forest_details.groupby("feature", as_index=False)
+        .agg(
+            positive_top_k_count=("in_positive_top_k", "sum"),
+            mean_ap_drop=("ap_permutation_importance_mean", "mean"),
+            ap_drop_std_across_folds=("ap_permutation_importance_mean", "std"),
+            median_positive_rank=("positive_importance_rank", "median"),
+        )
+        .assign(
+            positive_top_k_frequency=lambda frame: (
+                frame["positive_top_k_count"] / fold_count
+            )
+        )
+        .sort_values(
+            ["positive_top_k_count", "mean_ap_drop"],
+            ascending=[False, False],
+        )
+    )
+    candidates = logistic_summary[
+        [
+            "feature",
+            "top_k_count",
+            "top_k_frequency",
+            "mean_absolute_coefficient",
+            "sign_consistency",
+        ]
+    ].rename(
+        columns={
+            "top_k_count": "logistic_top20_count",
+            "top_k_frequency": "logistic_top20_frequency",
+        }
+    ).merge(
+        forest_summary[
+            [
+                "feature",
+                "positive_top_k_count",
+                "positive_top_k_frequency",
+                "mean_ap_drop",
+            ]
+        ].rename(
+            columns={
+                "positive_top_k_count": "rf_positive_top20_count",
+                "positive_top_k_frequency": "rf_positive_top20_frequency",
+            }
+        ),
+        on="feature",
+        how="outer",
+    )
+    candidates["logistic_meets_2_of_3"] = (
+        candidates["logistic_top20_count"] >= 2
+    )
+    candidates["rf_meets_2_of_3"] = candidates["rf_positive_top20_count"] >= 2
+    candidates["meets_both_methods_2_of_3"] = (
+        candidates["logistic_meets_2_of_3"]
+        & candidates["rf_meets_2_of_3"]
+    )
+    candidates["temporal_evidence_count_sum"] = (
+        candidates["logistic_top20_count"]
+        + candidates["rf_positive_top20_count"]
+    )
+    candidates = candidates.sort_values(
+        [
+            "meets_both_methods_2_of_3",
+            "temporal_evidence_count_sum",
+            "mean_absolute_coefficient",
+            "mean_ap_drop",
+        ],
+        ascending=[False, False, False, False],
+    )
+
+    used_indices = set(development_metadata.index)
+    used_timestamps = set(development_metadata["timestamp"])
+    diagnostic = {
+        "purpose": (
+            "Development-only expanding-time consistency screen for anonymous "
+            "predictive associations; not used for primary model or threshold selection."
+        ),
+        "method": (
+            "Protect the primary random test and chronological future holdout, "
+            "purge development rows sharing their timestamps, split remaining "
+            "unique timestamps into four ordered blocks, and evaluate three "
+            "expanding folds. Logistic top-20 uses past-train coefficients; RF "
+            "top-20 uses positive AP permutation drops on the next block."
+        ),
+        "seed": seed,
+        "top_k": top_k,
+        "permutation_repeats": 3,
+        "block_count": n_blocks,
+        "fold_count": fold_count,
+        "primary_test_rows_protected": int(len(primary_test)),
+        "chronological_holdout_rows_protected": int(len(chronological_holdout)),
+        "protected_union_rows": int(len(protected_indices)),
+        "protected_union_fail_count": int(target.loc[list(protected_indices)].sum()),
+        "row_level_development_pool_rows": int(len(row_level_pool)),
+        "rows_excluded_for_protected_timestamp_overlap": int(
+            len(excluded_timestamp_overlap)
+        ),
+        "strict_development_pool_rows": int(len(development_pool)),
+        "strict_development_pool_fail_count": int(
+            target.loc[list(development_pool)].sum()
+        ),
+        "strict_development_unique_timestamps": int(len(unique_timestamps)),
+        "primary_test_row_overlap_after_filter": int(len(used_indices & primary_test)),
+        "chronological_holdout_row_overlap_after_filter": int(
+            len(used_indices & chronological_holdout)
+        ),
+        "protected_timestamp_overlap_after_filter": int(
+            len(used_timestamps & protected_timestamps)
+        ),
+        "folds": fold_records,
+        "both_methods_2_of_3_features": candidates.loc[
+            candidates["meets_both_methods_2_of_3"], "feature"
+        ].tolist(),
+        "feature_059": candidates.loc[
+            candidates["feature"] == "feature_059"
+        ].iloc[0].to_dict(),
+        "primary_test_used": False,
+        "chronological_holdout_used": False,
+        "timestamp_used_as_model_feature": False,
+        "used_for_primary_model_or_threshold_selection": False,
+        "caution": (
+            "Validation folds contain only 15, 9, and 9 FAIL cases and expanding "
+            "training folds overlap. Correlated anonymous inputs can exchange "
+            "importance. This is a consistency screen, not causal evidence."
+        ),
+    }
+    return (
+        logistic_details,
+        logistic_summary,
+        forest_details,
+        forest_summary,
+        candidates,
+        diagnostic,
+    )
+
+
+def bootstrap_metric_intervals(
+    target: pd.Series | np.ndarray,
+    scores: np.ndarray,
+    threshold: float,
+    n_bootstrap: int = BOOTSTRAP_REPLICATES,
+    seed: int = BOOTSTRAP_SEED,
+    confidence_level: float = 0.95,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Paired nonparametric bootstrap CIs for a fixed test prediction vector."""
+
+    target_array = np.asarray(target, dtype=int)
+    score_array = np.asarray(scores, dtype=float)
+    if len(target_array) != len(score_array):
+        raise ValueError("target and scores must have the same length")
+    if target_array.size == 0 or np.unique(target_array).size != 2:
+        raise ValueError("target must contain both classes")
+
+    point = binary_metrics(target_array, score_array, threshold)
+    metric_functions = {
+        "accuracy": lambda y, prediction, score: accuracy_score(y, prediction),
+        "fail_precision": lambda y, prediction, score: precision_score(
+            y, prediction, pos_label=1, zero_division=0
+        ),
+        "fail_recall": lambda y, prediction, score: recall_score(
+            y, prediction, pos_label=1, zero_division=0
+        ),
+        "fail_f1": lambda y, prediction, score: f1_score(
+            y, prediction, pos_label=1, zero_division=0
+        ),
+        "balanced_accuracy": lambda y, prediction, score: balanced_accuracy_score(
+            y, prediction
+        ),
+        "roc_auc": lambda y, prediction, score: roc_auc_score(y, score),
+        "average_precision": lambda y, prediction, score: average_precision_score(
+            y, score
+        ),
+        "pr_auc_trapezoid": lambda y, prediction, score: trapezoidal_pr_auc(
+            y, score
+        ),
+        "specificity": lambda y, prediction, score: recall_score(
+            y, prediction, pos_label=0, zero_division=0
+        ),
+        "predicted_fail_rate": lambda y, prediction, score: float(
+            prediction.mean()
+        ),
+        "true_negative": lambda y, prediction, score: int(
+            ((y == 0) & (prediction == 0)).sum()
+        ),
+        "false_positive": lambda y, prediction, score: int(
+            ((y == 0) & (prediction == 1)).sum()
+        ),
+        "false_negative": lambda y, prediction, score: int(
+            ((y == 1) & (prediction == 0)).sum()
+        ),
+        "true_positive": lambda y, prediction, score: int(
+            ((y == 1) & (prediction == 1)).sum()
+        ),
+    }
+    point.update(
+        {
+            "specificity": point["true_negative"]
+            / (point["true_negative"] + point["false_positive"]),
+            "predicted_fail_rate": (
+                point["true_positive"] + point["false_positive"]
+            )
+            / len(target_array),
+        }
+    )
+    values = {metric: [] for metric in metric_functions}
+    rng = np.random.default_rng(seed)
+    pass_indices = np.flatnonzero(target_array == 0)
+    fail_indices = np.flatnonzero(target_array == 1)
+    for _ in range(n_bootstrap):
+        sampled = np.concatenate(
+            [
+                rng.choice(pass_indices, size=len(pass_indices), replace=True),
+                rng.choice(fail_indices, size=len(fail_indices), replace=True),
+            ]
+        )
+        sampled_target = target_array[sampled]
+        sampled_scores = score_array[sampled]
+        sampled_predictions = (sampled_scores >= threshold).astype(int)
+        for metric, function in metric_functions.items():
+            values[metric].append(
+                float(function(sampled_target, sampled_predictions, sampled_scores))
+            )
+
+    alpha = 1 - confidence_level
+    rows: list[dict[str, Any]] = []
+    for metric, samples in values.items():
+        sample_array = np.asarray(samples)
+        rows.append(
+            {
+                "metric": metric,
+                "point_estimate": point[metric],
+                "bootstrap_median": float(np.median(sample_array)),
+                "ci_low": float(np.quantile(sample_array, alpha / 2)),
+                "ci_high": float(np.quantile(sample_array, 1 - alpha / 2)),
+                "confidence_level": confidence_level,
+                "valid_replicates": int(len(sample_array)),
+            }
+        )
+
+    metadata = {
+        "purpose": "Uncertainty sensitivity for the locked test metrics.",
+        "method": (
+            "True-label-stratified paired nonparametric percentile bootstrap of "
+            "fixed test rows; PASS and FAIL counts are preserved in each replicate."
+        ),
+        "seed": seed,
+        "requested_replicates": n_bootstrap,
+        "valid_replicates": n_bootstrap,
+        "skipped_single_class_replicates": 0,
+        "confidence_level": confidence_level,
+        "test_rows": int(len(target_array)),
+        "test_fail_count": int(target_array.sum()),
+        "model_refit_in_bootstrap": False,
+        "threshold_reselected_in_bootstrap": False,
+        "class_prevalence_conditioned_on_observed_test": True,
+        "caution": (
+            "Intervals condition on this fixed model, threshold, test sampling "
+            f"frame, and observed {int(target_array.sum())}/{len(target_array)} "
+            "FAIL prevalence. They exclude training, "
+            "model-selection, and threshold-selection uncertainty; they do not "
+            "make all metrics invalid and are not an external performance guarantee."
+        ),
+    }
+    return pd.DataFrame(rows), metadata
+
+
+def evaluate_shared_timestamp_sensitivity(
+    features_train: pd.DataFrame,
+    features_test: pd.DataFrame,
+    target_train: pd.Series,
+    target_test: pd.Series,
+    metadata_train: pd.DataFrame,
+    metadata_test: pd.DataFrame,
+    selected_model_template: Pipeline,
+    primary_fitted_model: Pipeline,
+    primary_threshold: float,
+    seed: int = SEED,
+) -> dict[str, Any]:
+    """Assess repeated timestamp groups without treating timestamp as a batch ID."""
+
+    if not (
+        features_train.index.equals(target_train.index)
+        and features_train.index.equals(metadata_train.index)
+        and features_test.index.equals(target_test.index)
+        and features_test.index.equals(metadata_test.index)
+    ):
+        raise ValueError("Feature, target, and metadata indices must align exactly")
+
+    shared_timestamps = set(metadata_train["timestamp"]) & set(
+        metadata_test["timestamp"]
+    )
+    shared_train = metadata_train["timestamp"].isin(shared_timestamps)
+    shared_test = metadata_test["timestamp"].isin(shared_timestamps)
+    purged_train_indices = metadata_train.index[~shared_train]
+    purged_test_indices = metadata_test.index[~shared_test]
+
+    primary_scores = positive_scores(primary_fitted_model, features_test)
+    primary_predictions = (primary_scores >= primary_threshold).astype(int)
+    primary_nonshared_scores = positive_scores(
+        primary_fitted_model, features_test.loc[purged_test_indices]
+    )
+
+    purged_oof_cv = StratifiedKFold(
+        n_splits=CV_SPLITS,
+        shuffle=True,
+        random_state=seed,
+    )
+    purged_oof_probabilities = cross_val_predict(
+        selected_model_template,
+        features_train.loc[purged_train_indices],
+        target_train.loc[purged_train_indices],
+        cv=purged_oof_cv,
+        method="predict_proba",
+        n_jobs=1,
+    )
+    purged_oof_scores = positive_oof_scores(
+        purged_oof_probabilities,
+        target_train.loc[purged_train_indices],
+    )
+    purged_threshold, purged_threshold_details = select_quality_threshold(
+        target_train.loc[purged_train_indices],
+        purged_oof_scores,
+        recall_target=QUALITY_RECALL_TARGET,
+    )
+    purged_fitted = clone(selected_model_template).fit(
+        features_train.loc[purged_train_indices],
+        target_train.loc[purged_train_indices],
+    )
+    purged_scores = positive_scores(
+        purged_fitted, features_test.loc[purged_test_indices]
+    )
+
+    baseline_metrics = binary_metrics(
+        target_test, primary_scores, threshold=primary_threshold
+    )
+    nonshared_metrics = binary_metrics(
+        target_test.loc[purged_test_indices],
+        primary_nonshared_scores,
+        threshold=primary_threshold,
+    )
+    purged_primary_threshold_metrics = binary_metrics(
+        target_test.loc[purged_test_indices],
+        purged_scores,
+        threshold=primary_threshold,
+    )
+    purged_reselected_threshold_metrics = binary_metrics(
+        target_test.loc[purged_test_indices],
+        purged_scores,
+        threshold=purged_threshold,
+    )
+    return {
+        "purpose": (
+            "Sensitivity check for exact timestamp groups that cross the primary "
+            "random train/test split."
+        ),
+        "shared_timestamp_group_count": int(len(shared_timestamps)),
+        "removed_train_rows": int(shared_train.sum()),
+        "removed_train_fail_count": int(target_train.loc[shared_train].sum()),
+        "removed_test_rows": int(shared_test.sum()),
+        "removed_test_fail_count": int(target_test.loc[shared_test].sum()),
+        "shared_test_outcomes_at_primary_threshold": {
+            "pass_count": int((target_test.loc[shared_test] == 0).sum()),
+            "fail_count": int((target_test.loc[shared_test] == 1).sum()),
+            "true_negative": int(
+                (
+                    (target_test.to_numpy() == 0)
+                    & (primary_predictions == 0)
+                    & shared_test.to_numpy()
+                ).sum()
+            ),
+            "false_positive": int(
+                (
+                    (target_test.to_numpy() == 0)
+                    & (primary_predictions == 1)
+                    & shared_test.to_numpy()
+                ).sum()
+            ),
+            "false_negative": int(
+                (
+                    (target_test.to_numpy() == 1)
+                    & (primary_predictions == 0)
+                    & shared_test.to_numpy()
+                ).sum()
+            ),
+            "true_positive": int(
+                (
+                    (target_test.to_numpy() == 1)
+                    & (primary_predictions == 1)
+                    & shared_test.to_numpy()
+                ).sum()
+            ),
+        },
+        "remaining_train_rows": int(len(purged_train_indices)),
+        "remaining_test_rows": int(len(purged_test_indices)),
+        "remaining_test_fail_count": int(target_test.loc[purged_test_indices].sum()),
+        "primary_full_test_metrics": baseline_metrics,
+        "primary_model_on_nonshared_test_at_primary_threshold": nonshared_metrics,
+        "purged_refit_on_nonshared_test_at_primary_threshold": (
+            purged_primary_threshold_metrics
+        ),
+        "purged_train_only_threshold_selection": {
+            **purged_threshold_details,
+            "test_labels_used_to_select_threshold": False,
+            "test_feature_values_used_to_select_threshold": False,
+            "test_timestamp_metadata_used_for_group_purge": True,
+        },
+        "purged_refit_on_nonshared_test_at_purged_train_threshold": (
+            purged_reselected_threshold_metrics
+        ),
+        "primary_model_or_threshold_changed": False,
+        "caution": (
+            "Exact timestamp equality is not evidence that rows share a lot or "
+            "batch. This small-row exclusion test measures sensitivity only and "
+            "cannot identify a manufacturing-group mechanism."
+        ),
+    }
+
+
 def evaluate_temporal_sensitivity(
     features: pd.DataFrame,
     target: pd.Series,
@@ -830,7 +1444,9 @@ def evaluate_temporal_sensitivity(
     selected_model: Pipeline,
     seed: int = SEED,
 ) -> dict[str, Any]:
-    ordered_indices = metadata.sort_values("timestamp").index.to_numpy()
+    ordered_indices = metadata.sort_values(
+        ["timestamp", "sample_id"], kind="stable"
+    ).index.to_numpy()
     split_index = int(len(ordered_indices) * (1 - TEST_SIZE))
     train_indices = ordered_indices[:split_index]
     test_indices = ordered_indices[split_index:]
@@ -908,6 +1524,7 @@ def save_figures(
     selected_model: str,
     selected_threshold: float,
     feature_candidates: pd.DataFrame,
+    temporal_feature_candidates: pd.DataFrame,
 ) -> None:
     figures_dir.mkdir(parents=True, exist_ok=True)
     sns.set_theme(style="whitegrid", context="notebook")
@@ -1143,6 +1760,38 @@ def save_figures(
     fig.savefig(figures_dir / "09_false_negative_scores.png", bbox_inches="tight")
     plt.close(fig)
 
+    # Development-only temporal feature consistency screen
+    temporal_view = temporal_feature_candidates.head(12).sort_values(
+        "temporal_evidence_count_sum"
+    )
+    y_positions = np.arange(len(temporal_view))
+    fig, ax = plt.subplots(figsize=(8.5, 6.2))
+    ax.barh(
+        y_positions - 0.18,
+        temporal_view["logistic_top20_count"],
+        height=0.34,
+        label="Logistic coefficient top-20",
+        color="#4C78A8",
+    )
+    ax.barh(
+        y_positions + 0.18,
+        temporal_view["rf_positive_top20_count"],
+        height=0.34,
+        label="RF positive permutation top-20",
+        color="#F28E2B",
+    )
+    ax.set_yticks(y_positions, temporal_view["feature"])
+    ax.set_xticks([0, 1, 2, 3])
+    ax.set_xlim(0, 3.2)
+    ax.set_xlabel("Expanding-time folds in top-20 (out of 3)")
+    ax.set_title("Development-only temporal feature consistency")
+    ax.legend(loc="lower right")
+    fig.tight_layout()
+    fig.savefig(
+        figures_dir / "10_temporal_feature_stability.png", bbox_inches="tight"
+    )
+    plt.close(fig)
+
 
 def run_analysis(
     data_dir: Path = DEFAULT_DATA_DIR,
@@ -1312,6 +1961,17 @@ def run_analysis(
     test_predictions.to_csv(tables_dir / "test_predictions.csv", index=False)
     test_metrics = pd.DataFrame(test_rows)
     test_metrics.to_csv(tables_dir / "test_metrics.csv", index=False)
+    bootstrap_intervals, bootstrap_metadata = bootstrap_metric_intervals(
+        target_test,
+        selected_test_scores,
+        threshold=selected_threshold,
+    )
+    bootstrap_intervals.to_csv(
+        tables_dir / "test_metric_bootstrap_ci.csv", index=False
+    )
+    write_json(
+        metadata_dir / "test_metric_uncertainty.json", bootstrap_metadata
+    )
 
     # Feature stability uses train/CV data only. RF permutation analysis uses one
     # 5-fold cycle to limit runtime; logistic stability uses all repeated folds.
@@ -1347,6 +2007,46 @@ def run_analysis(
         tables_dir / "rf_permutation_stability_summary.csv", index=False
     )
     feature_candidates.to_csv(tables_dir / "feature_candidates.csv", index=False)
+
+    (
+        temporal_logistic_details,
+        temporal_logistic_summary,
+        temporal_forest_details,
+        temporal_forest_summary,
+        temporal_feature_candidates,
+        temporal_feature_stability_summary,
+    ) = temporal_feature_stability(
+        models["logistic_balanced"],
+        models["random_forest_balanced"],
+        features,
+        target,
+        metadata,
+        primary_train_indices=train_indices,
+        seed=seed,
+    )
+    temporal_logistic_details.to_csv(
+        tables_dir / "temporal_logistic_feature_stability_by_fold.csv",
+        index=False,
+    )
+    temporal_logistic_summary.to_csv(
+        tables_dir / "temporal_logistic_feature_stability_summary.csv",
+        index=False,
+    )
+    temporal_forest_details.to_csv(
+        tables_dir / "temporal_rf_permutation_stability_by_fold.csv",
+        index=False,
+    )
+    temporal_forest_summary.to_csv(
+        tables_dir / "temporal_rf_permutation_stability_summary.csv",
+        index=False,
+    )
+    temporal_feature_candidates.to_csv(
+        tables_dir / "temporal_feature_candidates.csv", index=False
+    )
+    write_json(
+        metadata_dir / "temporal_feature_stability.json",
+        temporal_feature_stability_summary,
+    )
 
     rf_fitted = fitted_models["random_forest_balanced"]
     rf_retained = retained_feature_names(rf_fitted, features_train.columns)
@@ -1384,6 +2084,23 @@ def run_analysis(
     )
     write_json(metadata_dir / "temporal_sensitivity.json", temporal_sensitivity)
 
+    shared_timestamp_sensitivity = evaluate_shared_timestamp_sensitivity(
+        features_train,
+        features_test,
+        target_train,
+        target_test,
+        metadata_train,
+        metadata_test,
+        selected_model_template,
+        selected_fitted,
+        selected_threshold,
+        seed=seed,
+    )
+    write_json(
+        metadata_dir / "shared_timestamp_sensitivity.json",
+        shared_timestamp_sensitivity,
+    )
+
     joblib.dump(selected_fitted, models_dir / "selected_model.joblib")
     write_json(
         models_dir / "selected_model_metadata.json",
@@ -1414,6 +2131,7 @@ def run_analysis(
         selected_model_name,
         selected_threshold,
         feature_candidates,
+        temporal_feature_candidates,
     )
 
     run_summary = {
@@ -1432,6 +2150,10 @@ def run_analysis(
         ),
         "false_negative_summary": fn_summary,
         "temporal_sensitivity": temporal_sensitivity,
+        "test_metric_uncertainty": bootstrap_metadata,
+        "test_metric_bootstrap_intervals": bootstrap_intervals.to_dict("records"),
+        "temporal_feature_stability": temporal_feature_stability_summary,
+        "shared_timestamp_sensitivity": shared_timestamp_sensitivity,
         "top_feature_candidates": feature_candidates.head(20).to_dict("records"),
         "interpretation_limits": [
             "The 590 inputs are anonymized; predictive association is not causation.",

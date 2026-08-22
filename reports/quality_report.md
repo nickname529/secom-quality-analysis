@@ -8,7 +8,7 @@
 
 ## 1. 목적과 데이터 품질
 
-의사결정 질문은 “높은 Accuracy가 아니라 실제 FAIL을 얼마나 놓치지 않으면서 추가검사 부담을 관리할 수 있는가?”다. [UCI SECOM](https://archive.ics.uci.edu/dataset/179/secom) 공식 원본 1,567건을 사용했다. UCI 메타데이터는 591 features라고 적지만 `secom.data`의 모든 행은 실제 590개 값을 가지므로 원본 구조를 따랐다. 라벨은 PASS 1,463건과 FAIL 104건으로 FAIL 비율이 6.64%다.
+의사결정 질문은 “높은 Accuracy가 아니라 실제 FAIL을 얼마나 놓치지 않으면서 추가확인 후보 수를 함께 볼 것인가?”다. [UCI SECOM](https://archive.ics.uci.edu/dataset/179/secom) 공식 원본 1,567건을 사용했다. UCI 메타데이터는 591 features라고 적지만 `secom.data`의 모든 행은 실제 590개 값을 가지므로 원본 구조를 따랐다. 라벨은 PASS 1,463건과 FAIL 104건으로 FAIL 비율이 6.64%다.
 
 전체 924,530개 입력 셀 중 결측은 41,951개(4.54%)였고, 590개 변수 중 538개에 결측이 있었다. 관측값 기준 상수 변수는 116개, 전부 결측인 변수와 무한값, exact duplicate feature row는 각각 0개였다. 변수명·단위·장비·lot/batch 정보는 공개되지 않았다.
 
@@ -31,7 +31,9 @@ Dummy, class-weighted Logistic Regression, class-weighted Random Forest를 train
 
 ¹ AP와 사다리꼴 PR-AUC는 보간 정의가 다르다. 모든 score가 같은 Dummy의 PR-AUC 0.533은 끝점 선형 보간의 영향이 커 비교 주지표로 쓰지 않았고 AP를 우선했다.
 
-RF @ 0.5는 Accuracy 93.31%였지만 FAIL 21건을 모두 놓쳤다. 후보 임계값은 FAIL 17건을 찾아 Recall 80.95%를 만들었으나 PASS 145건을 오탐해 314건 중 162건을 추가검사 대상으로 분류했다. Precision은 10.49%에 그쳤다. 즉, 이 결과는 성능 향상 주장이 아니라 **FN 감소와 검사부담 증가의 trade-off**다. 테스트 FAIL 한 건이 Recall을 4.76%p 바꾸며 Recall Wilson 구간도 60.00~92.33%로 넓다.
+RF @ 0.5는 Accuracy 93.31%였지만 FAIL 21건을 모두 놓쳤다. 후보 임계값은 FAIL 17건을 찾아 Recall 80.95%를 만들었으나 PASS 145건을 오탐해 314건 중 162건을 추가확인 후보로 분류했다. Precision은 10.49%에 그쳤다. 즉, 이 결과는 성능 향상 주장이 아니라 **FN 감소와 추가확인 후보 증가의 trade-off**다. 테스트 FAIL 한 건이 Recall을 4.76%p 바꾸며 Recall Wilson 구간도 60.00~92.33%로 넓다.
+
+고정 test 예측의 true-label-stratified bootstrap 10,000회 95% 구간은 Recall 0.619~0.952, Precision 0.082~0.127, Balanced Accuracy 0.562~0.739, ROC-AUC 0.644~0.863, AP 0.140~0.427이었다. 작은 FAIL 표본 때문에 불확실성이 크지만 모든 지표가 무효인 것은 아니다. 이 구간은 고정 모델·임계값과 관측 test 유병률에 조건부이며 학습·선택 불확실성이나 외부 기간 변동은 포함하지 않는다.
 
 ![혼동행렬](../figures/05_confusion_matrices.png)
 
@@ -41,8 +43,16 @@ RF @ 0.5는 Accuracy 93.31%였지만 FAIL 21건을 모두 놓쳤다. 후보 임�
 
 변수 후보는 test가 아닌 train CV에서만 산출했다. Logistic top-20 15/15와 RF permutation top-20 3/5를 동시에 만족한 `feature_059`가 두 방법에서 가장 반복적으로 나타났다. 그러나 이는 익명 변수의 **예측 연관성 후보**이며 특정 센서, 온도, 압력, 식각 조건, 불량 원인이라고 해석할 근거가 없다.
 
+시간 안정성은 별도로 검사했다. primary test와 미래 holdout 557행을 보호하고 같은 timestamp의 development 후보 7행도 제외한 1,003행만 사용했다. 세 expanding-time fold에서 두 방법 모두 2/3회 이상 top-20에 든 변수는 0개였고, `feature_059`도 Logistic과 RF에서 각각 1/3회였다. 따라서 기존 random-CV 연관성 후보는 유지하되 **시간 안정성이 확인됐다고 주장하지 않는다**.
+
 ## 5. 시간 일반화와 결론
 
-시간순 학습 1,253건(FAIL 87)의 OOF에서 별도 후보 임계값 0.064911을 정한 뒤 이후 314건(FAIL 17)에 적용했다. 결과는 TN 131 / FP 166 / FN 9 / TP 8, Recall 0.471, Precision 0.046, Balanced Accuracy 0.456, ROC-AUC 0.514, AP 0.092였다. 무작위 holdout보다 약화됐고, 모델 family가 1차 무작위 분석에서 이미 선택됐으므로 이 검사는 완전 독립 prospective 평가가 아닌 탐색적 민감도 검사다.
+동일 timestamp의 순서를 `sample_id`로 고정한 뒤, 시간순 학습 1,253건(FAIL 87)의 OOF에서 별도 후보 임계값 0.068235를 정해 이후 314건(FAIL 17)에 적용했다. 결과는 TN 171 / FP 126 / FN 10 / TP 7, Recall 0.412, Precision 0.053, Balanced Accuracy 0.494, ROC-AUC 0.540, AP 0.079였다. 무작위 holdout보다 약화돼 distribution shift 또는 temporal instability 가능성을 보였지만 spurious correlation이 원인이라고 단정하지 않는다. 모델 family가 1차 무작위 분석에서 이미 선택됐으므로 이 검사는 완전 독립 prospective 평가가 아닌 탐색적 민감도 검사다.
 
-**결론:** 공개 익명 데이터에서 FAIL score의 일부 분리 가능성과 임계값 trade-off를 확인했지만, 높은 오탐 부담·작은 FAIL 표본·시간 성능 저하·batch 정보 부재 때문에 운영 적용 근거는 부족하다. 다음 단계는 비용 기준을 먼저 정하고 lot/batch 그룹 분할, 외부 기간 검증, 확률 calibration, 변수 정의 확인을 수행하는 것이다. 현재 결과로 SK하이닉스 공정 원인 규명, 수율 개선, 현장 적용을 주장하지 않는다.
+동일 timestamp 11개 그룹의 test 11행은 모두 PASS였다. 고정 모델·임계값에서 이를 제외해도 Recall 0.810과 FN 4건은 동일했고 Precision은 0.105에서 0.109로 소폭 높아졌다. 알려진 중복이 결과를 낙관적으로 부풀린 정황은 없지만 timestamp가 다른 동일 lot/batch 의존성은 식별자 부재로 통제할 수 없다.
+
+**결론:** 공개 익명 데이터에서 FAIL score의 일부 분리 가능성과 임계값 trade-off를 확인했지만, FP 145건·작은 FAIL 표본·시간 성능 저하·변수 시간 안정성 미확인·batch 정보 부재 때문에 운영 적용 근거는 부족하다. 비용자료가 없으므로 임의 비용으로 cost-optimal threshold를 계산하지 않았다. 다음 단계는 실제 비용 기준을 먼저 정하고 lot/batch 그룹 분할, 외부 기간 검증, 확률 calibration, 변수 정의 확인을 수행하는 것이다. 현재 결과로 SK하이닉스 공정 원인 규명, 수율 개선, 현장 적용을 주장하지 않는다.
+
+## 6. AI 반론과 사람의 판정
+
+사용자는 외부 Gemma 검토의 6개 지적 요약을 전달했다. 요청에 언급된 원문 파일은 저장소에 없어 인용·복원하지 않았고, 각 지적을 Python으로 검증한 뒤 사람이 `ACCEPT / REJECT / PARTIAL ACCEPT / MAINTAIN`으로 판정했다. 상세 근거와 조치는 [`GEMMA_REVIEW_DECISIONS.md`](../docs/GEMMA_REVIEW_DECISIONS.md)에 있다. Gemma가 수치를 계산하거나 최종 결론을 결정하지 않았다.

@@ -23,7 +23,7 @@ def build_notebook() -> nbformat.NotebookNode:
 
 이 Notebook은 공개·익명화된 [UCI SECOM](https://archive.ics.uci.edu/dataset/179/secom) 원본을 다시 읽고, 고정된 train/test split에서 Dummy·Logistic Regression·Random Forest를 재학습해 저장된 결과와 일치하는지 확인한다.
 
-목적은 높은 수치를 과장하는 것이 아니라 **데이터 품질, leakage 통제, FAIL Recall–Precision trade-off, False Negative, 시간 일반화 한계**를 채용담당자가 빠르게 검토할 수 있게 하는 것이다. 생산 적용이나 공정 원인 규명을 주장하지 않는다."""
+목적은 높은 수치를 과장하는 것이 아니라 **데이터 품질, leakage 통제, FAIL Recall–Precision trade-off, 지표 불확실성, False Negative, 시간 일반화·변수 안정성 한계**를 채용담당자가 빠르게 검토할 수 있게 하는 것이다. 생산 적용이나 공정 원인 규명을 주장하지 않는다."""
         ),
         new_code_cell(
             """from pathlib import Path
@@ -168,7 +168,22 @@ print("Saved metrics and notebook recomputation match.")"""
             """display(Image(filename=str(ROOT / "figures" / "05_confusion_matrices.png")))"""
         ),
         new_markdown_cell(
-            """Random Forest @ 0.5는 Accuracy 93.31%지만 실제 FAIL 21건을 전부 놓쳤다. train-only OOF에서 정한 후보 임계값 `0.060939`에서는 17/21을 찾아 Recall 80.95%가 되었지만, PASS 145건을 오탐해 Precision은 10.49%였다. 이 값은 보정된 불량확률이나 운영 최적점이 아니라 FN 감소와 추가검사 부담의 **분석 가정**이다."""
+            """Random Forest @ 0.5는 Accuracy 93.31%지만 실제 FAIL 21건을 전부 놓쳤다. train-only OOF에서 정한 후보 임계값 `0.060939`에서는 17/21을 찾아 Recall 80.95%가 되었지만, PASS 145건을 오탐해 Precision은 10.49%였다. 이 값은 보정된 불량확률이나 운영 최적점이 아니라 FN 감소와 추가확인 후보 증가의 **분석 가정**이다."""
+        ),
+        new_markdown_cell("### 잠금 test 지표의 bootstrap 불확실성"),
+        new_code_cell(
+            """bootstrap_ci = pd.read_csv(
+    ROOT / "results" / "tables" / "test_metric_bootstrap_ci.csv"
+).set_index("metric")
+display(bootstrap_ci.loc[[
+    "fail_precision", "fail_recall", "fail_f1", "balanced_accuracy",
+    "roc_auc", "average_precision",
+], ["point_estimate", "ci_low", "ci_high", "valid_replicates"]].round(4))
+
+assert bootstrap_ci.loc["fail_recall", "valid_replicates"] == 10_000
+assert np.isclose(bootstrap_ci.loc["fail_recall", "point_estimate"], 17 / 21)
+assert np.isclose(bootstrap_ci.loc["fail_recall", "ci_low"], 13 / 21)
+assert np.isclose(bootstrap_ci.loc["fail_recall", "ci_high"], 20 / 21)"""
         ),
         new_markdown_cell("## 4. False Negative 4건"),
         new_code_cell(
@@ -209,6 +224,28 @@ display(Image(filename=str(ROOT / "figures" / "08_feature_candidate_stability.pn
         new_markdown_cell(
             """`feature_059`는 Logistic top-20 15/15, RF permutation top-20 3/5로 두 방법의 60% 반복 기준을 동시에 만족했다. 그러나 변수 의미·단위가 익명화되어 있으므로 특정 센서·온도·압력·식각 조건·불량 원인으로 해석할 수 없다."""
         ),
+        new_markdown_cell("### Development-only 시간 변수 안정성"),
+        new_code_cell(
+            """temporal_feature = json.loads(
+    (ROOT / "results" / "metadata" / "temporal_feature_stability.json").read_text()
+)
+temporal_candidates = pd.read_csv(
+    ROOT / "results" / "tables" / "temporal_feature_candidates.csv"
+)
+display(temporal_candidates.head(10).round(4))
+
+feature_059_temporal = temporal_candidates.loc[
+    temporal_candidates["feature"] == "feature_059"
+].iloc[0]
+assert temporal_feature["strict_development_pool_rows"] == 1003
+assert temporal_feature["primary_test_used"] is False
+assert temporal_feature["chronological_holdout_used"] is False
+assert temporal_candidates["meets_both_methods_2_of_3"].sum() == 0
+assert feature_059_temporal["logistic_top20_count"] == 1
+assert feature_059_temporal["rf_positive_top20_count"] == 1
+
+display(Image(filename=str(ROOT / "figures" / "10_temporal_feature_stability.png")))"""
+        ),
         new_markdown_cell("## 6. 시간순 민감도 — 일반화 경고"),
         new_code_cell(
             """temporal = json.loads(
@@ -218,23 +255,44 @@ temporal_metrics = temporal["metrics_at_train_only_quality_threshold"]
 display(pd.DataFrame([temporal_metrics]).round(4))
 
 assert temporal["train_only_threshold_selection"]["test_data_used_to_select_threshold"] is False
-assert temporal_metrics["true_positive"] == 8
-assert temporal_metrics["false_negative"] == 9
-assert np.isclose(temporal_metrics["fail_recall"], 8 / 17)
-assert np.isclose(temporal_metrics["fail_precision"], 8 / 174)"""
+assert temporal_metrics["true_positive"] == 7
+assert temporal_metrics["false_negative"] == 10
+assert np.isclose(temporal_metrics["fail_recall"], 7 / 17)
+assert np.isclose(temporal_metrics["fail_precision"], 7 / 133)"""
         ),
         new_markdown_cell(
-            """시간순 학습 데이터에서만 정한 후보 임계값 `0.064911`을 이후 기간에 적용했을 때 Recall 47.06%, Precision 4.60%, ROC-AUC 0.514, AP 0.092로 약화됐다. 모델 family는 1차 무작위 분석에서 이미 선택됐으므로 완전 독립 prospective 검증은 아니지만, 시간 일반화 위험을 숨기지 않는 민감도 증거다."""
+            """동일 timestamp 내부 순서를 `sample_id`로 고정하고, 시간순 학습 데이터에서만 정한 후보 임계값 `0.068235`를 이후 기간에 적용했을 때 Recall 41.18%, Precision 5.26%, ROC-AUC 0.540, AP 0.079로 약화됐다. 이는 distribution shift 또는 temporal instability 가능성을 보여주지만 spurious correlation이 원인이라고 단정할 근거는 없다. 모델 family는 1차 무작위 분석에서 이미 선택됐으므로 완전 독립 prospective 검증은 아니다."""
+        ),
+        new_markdown_cell("### Shared timestamp 영향 민감도"),
+        new_code_cell(
+            """shared_timestamp = json.loads(
+    (ROOT / "results" / "metadata" / "shared_timestamp_sensitivity.json").read_text()
+)
+comparison = pd.DataFrame([
+    shared_timestamp["primary_full_test_metrics"],
+    shared_timestamp["primary_model_on_nonshared_test_at_primary_threshold"],
+], index=["full locked test", "exclude shared-timestamp test rows"])
+display(comparison[[
+    "fail_precision", "fail_recall", "fail_f1", "balanced_accuracy",
+    "roc_auc", "average_precision", "true_negative", "false_positive",
+    "false_negative", "true_positive",
+]].round(4))
+
+assert shared_timestamp["shared_timestamp_group_count"] == 11
+assert shared_timestamp["removed_test_fail_count"] == 0
+assert comparison.loc["full locked test", "false_negative"] == 4
+assert comparison.loc["exclude shared-timestamp test rows", "false_negative"] == 4"""
         ),
         new_markdown_cell(
             """## 7. 결론과 AI 역할 경계
 
 - 공개 익명 데이터에서 일부 FAIL score 분리 가능성은 보였으나 높은 오탐, 작은 FAIL 표본, 시간 성능 저하, batch 정보 부재로 현장 적용 근거는 부족하다.
 - AI는 코드·방법론 검토와 문서 초안을 보조했다. 데이터 수·지표·혼동행렬·그래프는 Python 실행값만 사용했다.
-- Gemma는 설치하거나 호출하지 않았다. 선택적 사용 시에도 가설·코드 리뷰·반론 생성에만 한정한다.
+- 프로젝트 환경에서는 Gemma를 설치하거나 호출하지 않았다. 사용자가 외부 검토의 6개 지적 요약을 전달해 Python 결과와 대조했으며, 원문 파일이 없어 인용·복원하지 않았다.
+- 실제 비용자료가 없어 cost-optimal threshold는 계산하지 않았다.
 - 없는 반도체 실무 경험, SK하이닉스 공정 분석, 수율 개선, 원인 규명은 주장하지 않는다.
 
-상세 내용은 [README](../README.md), [Quality Report](../reports/quality_report.md), [AI 사용 기록](../docs/AI_USAGE.md), [검증 로그](../docs/VALIDATION_LOG.md)에서 확인할 수 있다."""
+상세 내용은 [README](../README.md), [Quality Report](../reports/quality_report.md), [Human Decision Log](../docs/GEMMA_REVIEW_DECISIONS.md), [AI 사용 기록](../docs/AI_USAGE.md), [검증 로그](../docs/VALIDATION_LOG.md)에서 확인할 수 있다."""
         ),
     ]
 
