@@ -1,15 +1,16 @@
-# 사용자 제공 Gemma 지적 요약에 대한 Human Decision Log
+# Gemma 4 26B A4B 독립 리뷰에 대한 Human Decision Log
 
 ## 목적과 출처 경계
 
-이 문서는 AI 출력을 그대로 채택한 기록이 아니라, 사용자가 전달한 Gemma 지적을 Python 결과와 대조해 사람이 판정한 기록이다. 최종 판단 권한은 사람에게 있으며 모든 신규 수치의 source of truth는 `results/`의 JSON·CSV다.
+이 문서는 실제 Gemma API 독립 리뷰를 그대로 채택한 기록이 아니라, 보존된 원문을 Python 결과와 대조해 사람이 판정한 기록이다. 최종 판단 권한은 사람에게 있으며 모든 수치의 source of truth는 `results/`의 Python JSON·CSV다.
 
-- 사용자 제공 진술상 검토 모델: Gemma 4 26B A4B
-- 전달된 근거: 사용자가 2026-08-22 메시지에서 제공한 6개 지적 요약과 판정 기준
-- 원문 상태: 요청에 언급된 `results/gemma_review.md`는 작업공간과 GitHub `main`에 존재하지 않았다.
-- 인용 상태: 아래 “지적 요약”은 Gemma 원문의 인용·복원이 아니라 **사용자 제공 요약의 재서술**이다.
-- 로컬 실행 상태: 이 프로젝트 환경에서 Gemma를 설치하거나 API로 호출하지 않았다.
-- 변경 금지선: 잠금 test를 보고 1차 모델 family나 임계값을 다시 선택하지 않았다.
+- 원문 evidence: [`results/gemma_review.md`](../results/gemma_review.md)
+- 원문 표기 모델: `gemma-4-26b-a4b-it` (Gemma 4 26B A4B)
+- 원문 생성 시각: `2026-08-22T13:59:07.631883+00:00` UTC
+- 실행 provenance: 사용자가 별도 환경에서 실제 Gemma API 독립 리뷰를 수행해 원본 출력 파일을 제공했다. 이 저장소의 Python 수치 산출 파이프라인에는 Gemma가 참여하지 않았다.
+- 원문 무결성: 5,143 bytes, SHA-256 `68fde4ed803ce0c6f5de40fa90b9dfabfab5bf39122c4b198de9997ffa14ce9d`. 원문은 내용 변경·교정·미화 없이 수록했다.
+- 수치 시점 경계: 원문은 당시 시간순 ROC-AUC `0.514`를 검토했다. 이후 동일 timestamp 내부 정렬을 `timestamp → sample_id`로 고정한 최종 Python 재계산값은 `0.539909`이며, 원문을 소급 수정하지 않았다.
+- 변경 금지선: 잠금 test를 보고 1차 모델 family나 임계값을 다시 선택하지 않았다. 이번 evidence PR에서는 신규 분석·재학습·튜닝을 하지 않는다.
 
 ## 판정 기준
 
@@ -20,24 +21,26 @@
 
 ## 판정 요약
 
-| ID | 사용자 제공 지적 요약(원문 아님) | 인간 판정 | 핵심 이유 | 실제 조치 |
+| ID | 원본 Gemma 리뷰의 대응 지적 | 인간 판정 | 핵심 이유 | 실제 조치 |
 |---|---|---|---|---|
-| G-01 | 시간순 holdout 성능 저하는 중요하며 spurious correlation일 수 있다. | 성능 저하 `ACCEPT`; 원인 단정 `REJECT` | 저하는 실측됐지만 원인을 식별할 lot·장비·recipe·변수 의미가 없다. | distribution shift 또는 temporal instability 가능성으로 표현을 제한했다. |
-| G-02 | 잠금 test FAIL 21개라 불확실성이 크고 지표 신뢰가 제한된다. | 불확실성 `ACCEPT`; 모든 지표 무효 `REJECT` | 고정 test의 조건부 추정치는 유효하지만 구간이 넓고 외부 일반화 근거는 아니다. | 10,000회 bootstrap 95% CI를 추가했다. |
-| G-03 | Precision 10.49%, FP 145개는 운영 trade-off 검토가 필요하다. | trade-off `ACCEPT`; 현장 불가능·비용 발생 단정 `REJECT` | 추가확인 후보가 많다는 사실은 확인되지만 검사·공정중단 비용 자료가 없다. | 후보 수를 정량 기록하고 cost-optimal threshold는 Future Work로 남겼다. |
-| G-04 | train/test에 같은 timestamp가 있어 미지의 그룹 의존성이 있을 수 있다. | `PARTIAL ACCEPT` | timestamp가 batch라는 증거는 없지만 알려진 11개 중복 그룹의 영향은 점검할 수 있다. | 중복 test 행 제외 및 양쪽 purge/refit 민감도 검사를 추가했다. |
-| G-05 | 변수 후보의 시간 안정성이 확인되지 않았다. | `ACCEPT` | 기존 후보는 random-train CV의 반복성만 보여 시간 안정성을 입증하지 않았다. | 두 holdout을 보호한 development-only expanding-time 검증을 추가했다. |
-| G-06 | 익명 feature를 공정 원인으로 해석하면 안 된다. | `ACCEPT · MAINTAIN` | 변수명·단위·장비·recipe 정보가 없고 예측 연관성은 인과가 아니다. | 기존 인과 과대해석 금지 문구를 유지하고 시간 결과에도 같은 제한을 적용했다. |
+| G-01 | §1 Fatal Issues의 **모델의 시간적 일반화 능력 상실**, §5 결론 | 성능 저하 `ACCEPT`; spurious correlation·미래 사용 불가 단정 `REJECT` | 저하는 실측됐지만 원인을 식별할 lot·장비·recipe·변수 의미가 없다. | distribution shift 또는 temporal instability 가능성으로 표현을 제한했다. |
+| G-02 | §1의 **통계적 유의성 결여**, §4 Priority 2, §5 결론 | 불확실성 `ACCEPT`; 모든 지표 무효 `REJECT` | 고정 test의 조건부 추정치는 유효하지만 구간이 넓고 외부 일반화 근거는 아니다. | 10,000회 bootstrap 95% CI를 추가했다. |
+| G-03 | §1의 **임계값 선택의 불균형**, §4 Priority 4, §5 결론 | trade-off `ACCEPT`; 현장 불가능·비용 발생 단정 `REJECT` | 후보 수와 FP는 확인되지만 검사·공정중단 비용 자료가 없다. | 후보 수와 FP를 기록하고 cost-optimal threshold는 Future Work로 남겼다. |
+| G-04 | §2의 **데이터 누수 가능성 (Timestamp Overlap)**, §4 Priority 5 | `PARTIAL ACCEPT` | timestamp가 batch라는 증거는 없지만 알려진 11개 중복 그룹의 영향은 점검할 수 있다. | 중복 test 행 제외 및 양쪽 purge/refit 민감도 검사를 추가했다. |
+| G-05 | §2의 **변수 안정성 과장**, §4 Priority 1 | `ACCEPT` | 기존 후보는 random-train CV의 반복성만 보여 시간 안정성을 입증하지 않았다. | 두 holdout을 보호한 development-only expanding-time 검증을 추가했다. |
+| G-06 | §2의 **인과관계 오인 위험** | `ACCEPT · MAINTAIN` | 변수명·단위·장비·recipe 정보가 없고 예측 연관성은 인과가 아니다. | 기존 인과 과대해석 금지 문구를 유지하고 시간 결과에도 같은 제한을 적용했다. |
 
 ## G-01. 시간순 성능 저하와 원인 표현
 
+**원본 대응:** §1 치명적 문제의 “모델의 시간적 일반화 능력 상실 (Temporal Collapse)”과 §5 결론 문장.
+
 ### 지적 요약
 
-시간순 holdout 결과가 무작위 holdout보다 크게 약하며, 이를 spurious correlation의 증거로 볼 수 있다는 취지다.
+시간순 holdout 결과가 무작위 holdout보다 크게 약하며, 이를 spurious correlation의 결과이자 미래 사용 불가의 근거로 단정한 지적이다.
 
 ### Python 근거
 
-[`temporal_sensitivity.json`](../results/metadata/temporal_sensitivity.json)의 시간순 후보 임계값 결과는 Recall `0.411765`, Precision `0.052632`, Balanced Accuracy `0.493761`, ROC-AUC `0.539909`, AP `0.079034`다. 동일 timestamp 내부 순서는 `sample_id`로 고정했다. 무작위 잠금 test의 Recall `0.809524`, Precision `0.104938`, ROC-AUC `0.759142`, AP `0.228697`보다 낮다.
+원본 리뷰에는 당시 출력의 시간순 ROC-AUC `0.514`가 적혀 있다. 이후 tie-order 재현성을 위해 동일 timestamp 내부 순서를 `sample_id`로 고정한 최종 [`temporal_sensitivity.json`](../results/metadata/temporal_sensitivity.json)의 결과는 Recall `0.411765`, Precision `0.052632`, Balanced Accuracy `0.493761`, ROC-AUC `0.539909`, AP `0.079034`다. 무작위 잠금 test의 Recall `0.809524`, Precision `0.104938`, ROC-AUC `0.759142`, AP `0.228697`보다 낮다. 최종 수치가 달라졌어도 성능 저하 방향은 유지되며, 원본 evidence는 당시 출력 그대로 보존한다.
 
 ### 인간 판정과 조치
 
@@ -48,6 +51,8 @@
 - 1차 모델·임계값 변경: 없음
 
 ## G-02. FAIL 21개의 불확실성
+
+**원본 대응:** §1의 “통계적 유의성 결여”, §4 Priority 2 “Bootstrapping for Confidence Intervals”, §5 결론 문장.
 
 ### 지적 요약
 
@@ -77,6 +82,8 @@
 
 ## G-03. Precision·False Positive와 비용 주장
 
+**원본 대응:** §1의 “임계값 선택의 불균형”, §4 Priority 4 “Precision-Recall Curve Cost Analysis”, §5 결론 문장.
+
 ### 지적 요약
 
 후보 임계값의 Precision `10.49%`와 FP `145`개가 운영 trade-off를 만들며, 현장 도입이 어렵거나 공정중단 비용을 유발할 수 있다는 취지다.
@@ -94,6 +101,8 @@
 - Future Work: 실제 비용행렬과 운영 제약을 먼저 확보한 뒤 threshold를 검토한다.
 
 ## G-04. Shared timestamp 영향
+
+**원본 대응:** §2의 “데이터 누수 가능성 (Timestamp Overlap)”과 §4 Priority 5 “Shared Timestamp Impact Test”.
 
 ### 지적 요약
 
@@ -118,6 +127,8 @@
 - 1차 모델·임계값 변경: 없음
 
 ## G-05. 변수 후보의 시간 안정성
+
+**원본 대응:** §2의 “변수 안정성 과장 (Feature Stability Illusion)”과 §4 Priority 1 “Feature Importance Temporal Stability Check”.
 
 ### 지적 요약
 
@@ -147,6 +158,8 @@
 
 ## G-06. 익명 feature의 인과 해석
 
+**원본 대응:** §2의 “인과관계 오인 위험”.
+
 ### 지적 요약
 
 익명 변수를 특정 센서·온도·압력·식각 조건이나 FAIL 원인으로 해석하면 안 된다는 취지다.
@@ -157,6 +170,20 @@
 - 기존 README·보고서·코드 산출물은 `feature_059`를 예측 연관성의 후속 조사 후보로만 다뤘다.
 - 신규 시간 안정성 결과에도 같은 경계를 적용한다. 안정성은 인과가 아니며, 불안정성도 spurious correlation의 원인을 입증하지 않는다.
 
+## 원본의 추가 검증 제안 처리
+
+원본 §4의 다섯 제안을 전부 수행한 것은 아니다. 사람이 근거·우선순위·허용 범위를 검토한 뒤 다음처럼 처리했다.
+
+| 원본 제안 | 대응 판정 | 처리 상태 |
+|---|---|---|
+| Priority 1: Feature Importance Temporal Stability Check | G-05 `ACCEPT` | 완료. 보호 holdout을 쓰지 않은 expanding-time 검증으로 제한했다. |
+| Priority 2: Bootstrapping for Confidence Intervals | G-02 `ACCEPT` | 완료. 고정 score·고정 threshold의 조건부 95% CI만 계산했다. |
+| Priority 3: FAIL Clustering Analysis | 별도 채택 안 함 | 수행하지 않았다. 사용자가 승인한 세 우선 검증에 포함되지 않았고, 시간 집중이 공정 변화를 뜻한다는 인과 구분도 공개 변수만으로 할 수 없다. |
+| Priority 4: Precision-Recall Curve Cost Analysis | G-03의 비용 단정 `REJECT` | 수행하지 않았다. 실제 FP/FN 비용·검사시간·중단 규칙 없이 임의 비용 최적화를 하지 않고 Future Work로 남겼다. |
+| Priority 5: Shared Timestamp Impact Test | G-04 `PARTIAL ACCEPT` | 완료. 알려진 exact timestamp 중복 범위만 민감도 검사했다. |
+
+원본 §3의 “잘 통제된 점” 세 항목은 G-01~G-06 비판 ID의 직접 대응 항목이 아니라 보조 평가다. Pipeline 내부 전처리, 불확실성 공개, 기본 임계값과 후보 임계값의 분리 원칙은 그대로 유지했다.
+
 ## 종합 Human Decision
 
 - 1차 Random Forest 선택: 유지
@@ -166,5 +193,6 @@
 - 임의 비용 기반 threshold 최적화: 없음
 - 추가된 근거: bootstrap CI, shared timestamp 민감도, development-only 시간 변수 안정성
 - 강화된 한계: 작은 FAIL 표본, distribution shift/temporal instability 가능성, 변수 시간 안정성 미확인, 미관측 lot/batch 의존성
+- Freeze: 이 evidence PR을 checkpoint로 공개 v1을 `FROZEN` 상태로 두고 추가 모델링·튜닝·임계값 재선택을 중단한다.
 
 Gemma 지적은 분석의 반론 입력으로 사용했지만, 최종 결론과 문구는 Python 결과와 사람이 결정했다.

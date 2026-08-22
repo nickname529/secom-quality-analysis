@@ -9,7 +9,7 @@
 
 ## 핵심 실행 명령과 결과
 
-아래에는 상태를 바꾸거나 최종 결과를 검증한 핵심 명령을 기록했다. API key·token·cookie는 사용하거나 출력하지 않았다.
+아래에는 상태를 바꾸거나 최종 결과를 검증한 핵심 명령을 기록했다. 이 저장소의 Python 분석과 evidence 정리에서는 API key·token·cookie를 취급하거나 출력하지 않았다. Gemma API는 사용자가 별도 환경에서 실행했으며, 해당 credential은 저장소에 제공·저장·출력되지 않았다.
 
 ```text
 git init -b portfolio-build
@@ -53,13 +53,19 @@ work/.venv/bin/python -m py_compile \
 
 git diff --check
 
+shasum -a 256 results/gemma_review.md
+
+../.venv/bin/python -m pytest -q tests
+
 zip -r outputs/secom-quality-analysis-complete.zip \
   outputs/secom-quality-analysis -x '*/__pycache__/*' '*.pyc'
 
 shasum -a 256 outputs/secom-quality-analysis-complete.zip
 ```
 
-Human Decision 검증 추가 후 최종 자동 테스트는 `17 passed in 15.13s`였다. 실행 Notebook은 29셀 중 코드 셀 12개 모두 execution count가 있고 error output은 0개였으며 절대 로컬 경로가 포함되지 않았는지 자동 확인했다. 동일 입력으로 연속 생성한 최종 Notebook SHA-256은 두 번 모두 `e4fff09f44106b41611bd7a30c4d69ba302fd9a890985bcb9f6475135ba708b7`였다. 잠금 test의 기존 TN/FP/FN/TP와 모델·임계값은 변하지 않았다. 신규 bootstrap은 10,000회 모두 유효했고, strict temporal feature pool은 두 보호 holdout의 행·timestamp와 교집합이 0인지 테스트했다. 모든 Markdown 로컬 링크, Python 문법, Git diff whitespace도 자동 검사한다.
+Human Decision 검증 추가 단계의 자동 테스트는 `17 passed in 15.13s`였다. 실행 Notebook은 29셀 중 코드 셀 12개 모두 execution count가 있고 error output은 0개였으며 절대 로컬 경로가 포함되지 않았는지 자동 확인했다. 동일 입력으로 연속 생성한 해당 단계 Notebook SHA-256은 두 번 모두 `e4fff09f44106b41611bd7a30c4d69ba302fd9a890985bcb9f6475135ba708b7`였다. 잠금 test의 기존 TN/FP/FN/TP와 모델·임계값은 변하지 않았다. 신규 bootstrap은 10,000회 모두 유효했고, strict temporal feature pool은 두 보호 holdout의 행·timestamp와 교집합이 0인지 테스트했다. 모든 Markdown 로컬 링크, Python 문법, Git diff whitespace도 자동 검사한다.
+
+Gemma 원본 evidence·provenance·Freeze 문서 정정 후에도 자동 테스트 `17 passed`를 다시 확인했다. 신규 분석·재학습·튜닝은 실행하지 않았다. Notebook은 마지막 Markdown provenance 셀만 생성 원본과 함께 고쳤고 코드·execution count·output은 바꾸지 않았으며, 동결본 SHA-256은 `8a1d03ca8841ddc714dc9f0ef78d8e1197bfcde07b61a4b1ce3cfd4535e355de`다. Gemma 원본과 저장소 사본은 각각 5,143 bytes이며 byte comparison과 SHA-256 `68fde4ed803ce0c6f5de40fa90b9dfabfab5bf39122c4b198de9997ffa14ce9d`가 일치했다. 원본의 시간순 ROC-AUC `0.514`는 당시 리뷰 입력의 역사적 값으로 보존하고, 최종 Python source of truth `0.539909`와 Decision Log에서 구분했다.
 
 ## 발생한 실패와 처리
 
@@ -154,6 +160,7 @@ tests/conftest.py
 tests/test_secom_analysis.py
 
 results/run_summary.json
+results/gemma_review.md
 results/metadata/dataset_summary.json
 results/metadata/false_negative_summary.json
 results/metadata/runtime_versions.json
@@ -188,8 +195,15 @@ results/tables/temporal_rf_permutation_stability_summary.csv
 
 프로젝트 밖의 사용자 파일은 수정하거나 삭제하지 않았다. 생성된 Python cache만 압축 전에 제거했다.
 
-## 남은 선택 작업
+## Freeze checkpoint
 
-- 필수 분석·문서 작업은 완료했다.
-- 프로젝트 환경의 Gemma 설치/API 호출은 하지 않았다. 사용자가 외부 검토의 6개 요약을 제공해 Human Decision Log로 판정했으며, 원문 `results/gemma_review.md`는 제공되지 않아 복원하지 않았다.
+- 분석 근거 기준 commit: `c1435a6578d7b957e81d420f3e61ab58bac981e4` (`main`, Gemma 원본 evidence 추가 직전)
+- 분석 상태: `COMPLETE`
+- 공개 v1 결과 상태: `FROZEN` (2026-08-23)
+- 동결 범위: 데이터, split, 전처리, 모델 family, 주 임계값, 잠금 test, bootstrap·시간순·timestamp·변수 안정성 민감도, 그래프, 수치 결론
+- 이번 PR의 변경 범위: Gemma 원본 무변경 수록, provenance·Human Decision 연결, 공개 문서·Notebook 설명 정정, 선택적 API helper의 기본 출력을 별도 재현 파일로 분리
+- 이번 PR에서 변경하지 않은 것: Python 분석 코드(`src/`), 모델 artifact, JSON·CSV 수치 산출물, 그래프, 분석 결론
+- 허용되는 v1 유지보수: 사실 오류·오탈자·깨진 링크·출처 설명 같은 비분석 문서 정정
+- 금지되는 v1 변경: 재학습, split 변경, threshold 재선택, 새 모델 비교, 새 민감도 분석, 기존 수치·결론 덮어쓰기
+- 추가 모델링이 필요하면 명시적 승인과 별도 v2 범위가 필요하다.
 - 지원자는 제출 전에 코드를 직접 재실행하고, 지원서 문장을 자신의 판단과 표현으로 검토해야 한다.

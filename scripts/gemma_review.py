@@ -24,7 +24,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        default=PROJECT_ROOT / "results" / "gemma_review.md",
+        default=PROJECT_ROOT / "results" / "gemma_review_reproduction.md",
     )
     return parser.parse_args()
 
