@@ -1,0 +1,11 @@
+{
+  "python": "3.12.13",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "numpy": "2.5.2",
+  "pandas": "3.0.5",
+  "scikit_learn": "1.9.0",
+  "scipy": "1.18.1",
+  "joblib": "1.5.3",
+  "matplotlib": "3.11.1",
+  "seaborn": "0.13.2"
+}

@@ -1,0 +1,22 @@
+model,model_label,metric,mean,std,min,max,n_folds
+dummy_prior,Dummy (prior),fail_recall,0.0,0.0,0.0,0.0,15
+dummy_prior,Dummy (prior),fail_precision,0.0,0.0,0.0,0.0,15
+dummy_prior,Dummy (prior),fail_f1,0.0,0.0,0.0,0.0,15
+dummy_prior,Dummy (prior),balanced_accuracy,0.5,0.0,0.5,0.5,15
+dummy_prior,Dummy (prior),roc_auc,0.5,0.0,0.5,0.5,15
+dummy_prior,Dummy (prior),average_precision,0.06623745019920318,0.0018909905555997376,0.064,0.06772908366533864,15
+dummy_prior,Dummy (prior),pr_auc_trapezoid,0.5331187250996016,0.0009454952777998407,0.532,0.5338645418326693,15
+logistic_balanced,Logistic Regression,fail_recall,0.2970588235294117,0.11395533918044863,0.11764705882352941,0.47058823529411764,15
+logistic_balanced,Logistic Regression,fail_precision,0.14066620413677572,0.049798136211956126,0.07142857142857142,0.21621621621621623,15
+logistic_balanced,Logistic Regression,fail_f1,0.18990117315924782,0.06766071781400354,0.08888888888888889,0.2962962962962963,15
+logistic_balanced,Logistic Regression,balanced_accuracy,0.5844268476621417,0.05652878069126395,0.5032679738562091,0.6733283056812469,15
+logistic_balanced,Logistic Regression,roc_auc,0.6314385369532428,0.07431683899354509,0.4772970085470085,0.7654600301659126,15
+logistic_balanced,Logistic Regression,average_precision,0.1612142645025884,0.06237059660105548,0.06736320518088587,0.27547615206467924,15
+logistic_balanced,Logistic Regression,pr_auc_trapezoid,0.1441669345182621,0.05831140734602208,0.06058110739095318,0.25991440418356637,15
+random_forest_balanced,Random Forest,fail_recall,0.0,0.0,0.0,0.0,15
+random_forest_balanced,Random Forest,fail_precision,0.0,0.0,0.0,0.0,15
+random_forest_balanced,Random Forest,fail_f1,0.0,0.0,0.0,0.0,15
+random_forest_balanced,Random Forest,balanced_accuracy,0.5,0.0,0.5,0.5,15
+random_forest_balanced,Random Forest,roc_auc,0.717229135243841,0.03840657718695808,0.6729512317747612,0.7986425339366516,15
+random_forest_balanced,Random Forest,average_precision,0.19311481141676629,0.06166795106631021,0.1025063586514039,0.327084457202126,15
+random_forest_balanced,Random Forest,pr_auc_trapezoid,0.17087284928124263,0.060064423202055926,0.09299584466704841,0.3189028565979479,15

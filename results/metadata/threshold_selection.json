@@ -1,0 +1,64 @@
+{
+  "rule": "Among train-only OOF thresholds with FAIL recall >= target, choose the highest-precision threshold; break ties with the higher threshold.",
+  "recall_target_assumption": 0.8,
+  "selected_threshold": 0.060938733541279586,
+  "oof_precision_at_threshold": 0.09838472834067548,
+  "oof_recall_at_threshold": 0.8072289156626506,
+  "candidate_threshold_count": 573,
+  "not_an_operational_optimum": true,
+  "selected_model": "random_forest_balanced",
+  "model_selection_rule": "Highest mean Average Precision among Logistic Regression and Random Forest in train-only repeated CV; mean FAIL recall breaks ties.",
+  "model_ranking": [
+    {
+      "model": "random_forest_balanced",
+      "cv_average_precision_mean": 0.19311481141676629,
+      "cv_fail_recall_mean": 0.0
+    },
+    {
+      "model": "logistic_balanced",
+      "cv_average_precision_mean": 0.1612142645025884,
+      "cv_fail_recall_mean": 0.2970588235294117
+    }
+  ],
+  "oof_metrics_at_0_5": {
+    "threshold": 0.5,
+    "accuracy": 0.9337589784517158,
+    "balanced_accuracy": 0.5,
+    "fail_precision": 0.0,
+    "fail_recall": 0.0,
+    "fail_f1": 0.0,
+    "roc_auc": 0.7193388940376892,
+    "average_precision": 0.17551189597265046,
+    "pr_auc_trapezoid": 0.1695128557778459,
+    "fail_prevalence": 0.06624102154828412,
+    "true_negative": 1170,
+    "false_positive": 0,
+    "false_negative": 83,
+    "true_positive": 0,
+    "fail_recall_wilson_low": 3.469446951953614e-18,
+    "fail_recall_wilson_high": 0.04423686343872062,
+    "fail_precision_wilson_low": null,
+    "fail_precision_wilson_high": null
+  },
+  "oof_metrics_at_selected_threshold": {
+    "threshold": 0.060938733541279586,
+    "accuracy": 0.4972067039106145,
+    "balanced_accuracy": 0.6412212954381629,
+    "fail_precision": 0.09838472834067548,
+    "fail_recall": 0.8072289156626506,
+    "fail_f1": 0.17539267015706805,
+    "roc_auc": 0.7193388940376892,
+    "average_precision": 0.17551189597265046,
+    "pr_auc_trapezoid": 0.1695128557778459,
+    "fail_prevalence": 0.06624102154828412,
+    "true_negative": 556,
+    "false_positive": 614,
+    "false_negative": 16,
+    "true_positive": 67,
+    "fail_recall_wilson_low": 0.7095641358590259,
+    "fail_recall_wilson_high": 0.8777120082930856,
+    "fail_precision_wilson_low": 0.07821739638043648,
+    "fail_precision_wilson_high": 0.12305775980166458
+  },
+  "test_data_used_to_select_threshold": false
+}
