@@ -1,0 +1,17 @@
+{
+  "method": "stratified random holdout",
+  "random_seed": 42,
+  "test_size_requested": 0.2,
+  "train_rows": 1253,
+  "test_rows": 314,
+  "train_pass": 1170,
+  "train_fail": 83,
+  "test_pass": 293,
+  "test_fail": 21,
+  "shared_timestamp_groups_across_train_test": 11,
+  "rows_in_shared_timestamp_groups": 22,
+  "shared_timestamp_caution": "Timestamp is not used as a feature, but repeated timestamps could be a proxy for unknown manufacturing groups. No lot/batch ID is available.",
+  "timestamp_used_as_model_feature": false,
+  "preprocessing_fit_scope": "training fold only via sklearn Pipeline",
+  "test_usage": "locked final evaluation only"
+}
