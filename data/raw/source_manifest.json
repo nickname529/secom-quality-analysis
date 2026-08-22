@@ -1,0 +1,35 @@
+{
+  "dataset": "SECOM",
+  "dataset_page": "https://archive.ics.uci.edu/dataset/179/secom",
+  "archive_url": "https://archive.ics.uci.edu/static/public/179/secom.zip",
+  "doi": "https://doi.org/10.24432/C54305",
+  "license": "CC BY 4.0",
+  "downloaded_at_utc": "2026-08-22T05:27:11.323196+00:00",
+  "integrity_policy": "Every archive and extracted file must match the pinned SHA-256 values in scripts/download_data.py.",
+  "files": {
+    "secom.zip": {
+      "sha256": "eea568baf3c2229096d7d294cf0b096b5502bd96d92c0b80a65b84714059be8e",
+      "expected_sha256": "eea568baf3c2229096d7d294cf0b096b5502bd96d92c0b80a65b84714059be8e",
+      "matches_expected": true,
+      "size_bytes": 1964989
+    },
+    "secom.data": {
+      "sha256": "20f0e7ee434f7dcbae0eea9ffff009a2b57f42d6b0dc9a5bd4f00782c0a3374c",
+      "expected_sha256": "20f0e7ee434f7dcbae0eea9ffff009a2b57f42d6b0dc9a5bd4f00782c0a3374c",
+      "matches_expected": true,
+      "size_bytes": 5389983
+    },
+    "secom_labels.data": {
+      "sha256": "126884cf453705c9e61a903fe906f0665a3b45ce3639e621edc5c93c89627e03",
+      "expected_sha256": "126884cf453705c9e61a903fe906f0665a3b45ce3639e621edc5c93c89627e03",
+      "matches_expected": true,
+      "size_bytes": 40638
+    },
+    "secom.names": {
+      "sha256": "6d91b0b46cdee03064ee3e3112f937c1b3f7fcd9933575794ec07974e6f1ea59",
+      "expected_sha256": "6d91b0b46cdee03064ee3e3112f937c1b3f7fcd9933575794ec07974e6f1ea59",
+      "matches_expected": true,
+      "size_bytes": 4223
+    }
+  }
+}

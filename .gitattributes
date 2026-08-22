@@ -1,0 +1,6 @@
+*.png binary
+*.zip binary
+*.joblib binary
+data/raw/secom.data -text -whitespace
+data/raw/secom_labels.data -text -whitespace
+data/raw/secom.names -text -whitespace
