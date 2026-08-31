@@ -1,0 +1,24 @@
+name: KoreaNow Source Probe
+on:
+  push:
+    branches:
+      - tmp-koreanow-19960830-build
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe AviationFanatic and LOC
+        run: |
+          python - <<'PY'
+          import urllib.request, re, json
+          ua={'User-Agent':'Mozilla/5.0 KoreaNowMedia/1.0'}
+          def get(url):
+              return urllib.request.urlopen(urllib.request.Request(url,headers=ua),timeout=30).read()
+          html=get('https://www.aviationfanatic.com/ent_list.php?AT_ID=T154&ent=20').decode('utf-8','ignore')
+          i=html.find('5137')
+          print('AF_CONTEXT', html[max(0,i-1500):i+1500].replace('\n',' '))
+          j=json.loads(get('https://www.loc.gov/item/2017881433/?fo=json').decode())
+          print('TRAWLER_IMAGE_URL', j.get('item',{}).get('image_url'))
+          print('TRAWLER_RESOURCES', json.dumps(j.get('resources',[])[:1])[:8000])
+          PY
