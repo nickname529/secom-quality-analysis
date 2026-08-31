@@ -1,0 +1,28 @@
+name: KoreaNow Temporary Build
+on:
+  push:
+    branches:
+      - tmp-koreanow-19960830-build
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg fonts-noto-cjk
+          python -m pip install --quiet pillow
+      - name: Build final package
+        run: python tmp/koreanow_19960830_build.py
+      - name: Upload final ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: KOREA_NOW_19960830_FINAL
+          path: KOREA_NOW_19960830_FINAL.zip
+          if-no-files-found: error
+          retention-days: 1
