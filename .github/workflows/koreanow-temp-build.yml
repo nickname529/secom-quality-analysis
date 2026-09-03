@@ -17,12 +17,12 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg fonts-noto-cjk
           python -m pip install --quiet pillow
-      - name: Build final package
-        run: python tmp/koreanow_19960831_build.py
+      - name: Build upload-ready package
+        run: python tmp/koreanow_19960903_final.py
       - name: Upload final ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: KOREA_NOW_19960831_FINAL
-          path: KOREA_NOW_19960831_FINAL.zip
+          name: KOREA_NOW_19960903_UPLOAD_READY
+          path: KOREA_NOW_19960903_UPLOAD_READY.zip
           if-no-files-found: error
           retention-days: 1
